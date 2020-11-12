@@ -1,2 +1,6 @@
 
 \.idea/
+data/config.json
+__pycache__
+*.env
+*.db
