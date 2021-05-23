@@ -1,7 +1,7 @@
 import os
 
 from motor.motor_asyncio import AsyncIOMotorClient
-from umongo import Instance
+from umongo.frameworks.motor_asyncio import MotorAsyncIOInstance
 
 instance = None
 
@@ -10,4 +10,4 @@ def init(dburl, dbname):
 
     client = AsyncIOMotorClient(dburl)
 
-    instance = Instance(client[dbname])
+    instance = MotorAsyncIOInstance(client[dbname])

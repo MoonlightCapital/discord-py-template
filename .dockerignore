@@ -1,0 +1,9 @@
+.git
+.cache
+*.example
+
+template-venv
+
+readme.md
+installing.md
+LICENSE

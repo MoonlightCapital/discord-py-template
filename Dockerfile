@@ -1,18 +1,9 @@
-FROM python:3.9
+FROM python:3.9.5
 
-WORKDIR /usr/src/app
+COPY requirements.txt /
+RUN pip install -r /requirements.txt
 
-# For safety reason, create an user with lower privileges than root and run from there
-RUN useradd -m -d /home/discordbot -s /bin/bash discordbot
+COPY . /app
+WORKDIR /app
 
-RUN mkdir /usr/src/discordbot
-
-RUN chown -R discordbot /usr/src/discordbot
-USER discordbot
-
-COPY requirements.txt ./
-RUN pip3 install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-CMD [ "python3", "main.py" ]
+CMD [ "python3", "-u", "main.py" ]
