@@ -42,7 +42,7 @@ def calculate_intents(raw):
             continue
 
         if intent.lower() not in Intents.VALID_FLAGS:
-            raise InvalidFlagException('Invalid intent flag passed')
+            raise InvalidFlagException(f'Invalid intent flag passed: {intent}')
 
         setattr(intents, intent.lower(), True)
 

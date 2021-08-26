@@ -29,7 +29,9 @@ class ErrorHandler(commands.Cog):
             return
 
         if cfg_value == 1:
-            channel = ctx.author.dm_channel if ctx.author.dm_channel else await ctx.author.create_dm()
+            app_info = await ctx.bot.application_info()
+
+            channel = app_info.owner.dm_channel if app_info.owner.dm_channel else await app_info.owner.create_dm()
         else:
             channel = self.bot.get_channel(cfg_value)
 
@@ -76,7 +78,13 @@ class ErrorHandler(commands.Cog):
             if isinstance(msg, str):
                 await ctx.send(msg.format(ctx=ctx, err=error))
         else:
+
+            if isinstance(error, (commands.CommandError, commands.CheckFailure)) and not isinstance(error, commands.CommandInvokeError):
+                return await ctx.send(f':x: {error}')
+
             await ctx.send(':rotating_light: An error occured while trying to execute that command')
+
+            print(error.original)
 
             embed = discord.Embed(
                 color=discord.Colour(0xff0000),
@@ -87,10 +95,10 @@ class ErrorHandler(commands.Cog):
             embed.add_field(name='Command', value=ctx.command)
             embed.add_field(name='Original message', value=ctx.message.content[:1021] + (ctx.message.content[1021:] and '...'))
             embed.add_field(name='Channel', value='Private Message' if isinstance(ctx.channel, discord.DMChannel) else f'#{ctx.channel.name} (`{ctx.channel.id}`)')
-            embed.add_field(name='Sender', value=f'{str(ctx.author)} (`{ctx.author.id}`)')
+            embed.add_field(name='Sender', value=f'{ctx.author} (`{ctx.author.id}`)')
             embed.add_field(name='Exception', value=error)
 
-            formatted_traceback = self._format_traceback(error, 2042) # Embed desc limit is 2048 characters, which includes the codeblock markers
+            formatted_traceback = self._format_traceback(error.original, 4094) # Embed desc limit is 4096 characters, which includes the codeblock markers
 
             embed.description = f'```{formatted_traceback}```'
 
