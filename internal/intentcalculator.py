@@ -1,4 +1,4 @@
-from discord import Intents
+from nextcord import Intents
 
 class InvalidFlagException(Exception):
     """An exception thrown when an invalid intent flag is passed"""
