@@ -4,8 +4,8 @@ import json
 import logging
 from pathlib import Path
 
-import discord
-from discord.ext import commands
+import nextcord as discord
+from nextcord.ext import commands
 
 from internal.botclass import Bot
 from internal.intentcalculator import calculate_intents
