@@ -2,7 +2,7 @@
 
 ## Clone the repository
 ```
-git clone https://github.com/MoonlightCapital/something
+git clone https://github.com/MoonlightCapital/discord-py-template.git
 ```
 
 ## Install dependencies
@@ -16,7 +16,7 @@ The configuration file resides at location `data/config.json`. An example file y
 ### Config values
 `prefix`: The prefix to use for the bot (required)
 `description`: A description of the bot, to show in the help command
-`intents`: Array of strings that represent [gateway intents](https://discord.com/developers/docs/topics/gateway#gateway-intents). For permitted values, look for the attributes in [the Discord.py docs](https://discordpy.readthedocs.io/en/latest/api.html#discord.Intents). Special values (`all`, `default`, and `none`) are also permitted.
+`intents`: Array of strings that represent [gateway intents](https://discord.com/developers/docs/topics/gateway#gateway-intents). For permitted values, look for the attributes in [the Discord.py docs](https://nextcord.readthedocs.io/en/latest/api.html#nextcord.Intents). Special values (`all`, `default`, and `none`) are also permitted.
 `database`: Set this to true to enable the database (will require additional variables, see below)
 
 ### Environment variables
@@ -75,7 +75,7 @@ A Dockerfile is provided. You can build the image and run it in a container like
 # FAQ/Troubleshooting
 
 ## What Python versions are supported?
-This template has been tested with 3.8.5 and 3.9.0. I believe 3.7 works as well, but 3.9 is the way to go.
+This template requires Python 3.8 as minimum version. Later versions should be fine (has been tested on Docker with Python 3.9.6)
 
 ## I am receiving a "AttributeError: 'NoneType' object has no attribute 'register'"
 You're trying to use the database without having set the database key in the config file to true, thus no database exists and you cannot perform operations on it.

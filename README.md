@@ -17,6 +17,6 @@ For an installation guide, read [the install page](installing.md)
 
 ## Helpful Links:
 - https://discord.gg/discord-api - A discord server with discusions on bot building and the API
-- https://discord.gg/r3sSKJJ - The official Discord.py support server managed by Danny
-- https://discordpy.readthedocs.io - Discord.py's documentation
+- https://discord.gg/ZebatWssCB - The official Nextcord support server
+- https://nextcord.readthedocs.io - Nextcord's documentation
 - https://discord.com/developers/applications/me - Where you can create your bot account & token
