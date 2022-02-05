@@ -2,6 +2,7 @@
   "token": "You can put your bot token here, though it's heavily recommended to use the env file instead for secret keys",
   "prefix": "The prefix for the bot",
   "intents": ["The intents for the bot"],
+  "description": "A cool bot",
 
   "database": "Toggles database"
 }
