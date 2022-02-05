@@ -3,8 +3,8 @@ import datetime
 import time
 from pathlib import Path
 
-import discord
-from discord.ext import commands
+import nextcord as discord
+from nextcord.ext import commands
 
 class Bot(commands.Bot):
     def __init__(self, **kwargs):
