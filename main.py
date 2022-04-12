@@ -45,8 +45,11 @@ async def run():
 
     config = load_config()
     intents = calculate_intents(config.get('intents', []))
+    
+    print("Database is about to be checked for truthiness")
 
-    if config.get('database') is True:
+    if config.get('database') == "True":
+        print("Database is being loaded")
 
         from internal import database_init
 
