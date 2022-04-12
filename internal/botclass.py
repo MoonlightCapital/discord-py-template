@@ -52,7 +52,7 @@ class Bot(commands.Bot):
                 error = f'{extension}\n {type(e).__name__} : {e}'
                 print(f'failed to load extension {error}')
             print('-' * 10)
-        self.load_extension('jishaku')
+        #self.load_extension('jishaku')
 
     async def on_ready(self):
         """
