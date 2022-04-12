@@ -55,12 +55,21 @@ class Reprimand(commands.Cog):
                 if (user is None):  user = await self.bot.fetch_user(doc.user)
                 user_display = user.display_name
 
-                log_output += user_display + ": " + str(doc.count) + " reprimands\n"
+                log_output += user_display + ": " + str(doc.count) + " reprimand"
+
+                # only add the s if the count is more than one
+                if doc.count > 1: log_output += "s\n"
+                else: log_output += "\n"
+
                 file_output = log_output
                 count += 1
             else:
                 # put the whole log in a text file
-                file_output += user_display + ": " + str(doc.count) + " reprimands\n"
+                file_output += user_display + ": " + str(doc.count) + " reprimand"
+
+                # only add the s if the count is more than one
+                if doc.count > 1: file_output += "s\n"
+                else: file_output += "\n"
         
         log_output += "```"
         file_output += "```"
