@@ -11,6 +11,7 @@ class ReprimandLog(Document):
 
     user = StringField(attribute='_id', required=True)
     count = IntegerField(default=1)
+    reasons = ListField(StringField(), default=list)
 
     class Meta:
         collection_name = "record"
