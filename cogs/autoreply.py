@@ -15,6 +15,13 @@ class AutoReply(commands.Cog):
         if (user is None):  user = await self.bot.fetch_user(userId)
         return user.display_name
 
+    async def send_autoreply(self, message, user):
+        reply = await self.find_reply(str(user.id))
+        if (reply is None): return # mentioned user has not set up a reply, go next
+
+        await message.channel.send(user.display_name + ' is not currently available. They left this note:\n`' + reply['message'] + '`')
+
+
     @commands.command()
     async def autoreply(self, ctx, *, message=''):
         """
@@ -58,13 +65,25 @@ class AutoReply(commands.Cog):
             return  # ignore all bots
             
         print('reading message for autoreply...')
+        mentioned = []
 
         for i in message.mentions:
             print('found message mentioning ' + i.display_name)
-            reply = await self.find_reply(str(i.id))
-            if (reply is None): continue # mentioned user has not set up a reply, go next
+            mentioned.append(str(i.id))
 
-            await message.channel.send(i.display_name + ' is not currently available. They left this note:\n`' + reply['message'] + '`')
+            await self.send_autoreply(message, i)
+
+        for j in message.role_mentions:
+            print('found message mentioning role ' + j.name)
+
+            for k in j.members:
+                print('checking ' + k.display_name + ' for a message')
+
+                # check if user already processed (users have many roles and good to avoid duplicates)
+                if str(k.id) in mentioned: continue
+                else: mentioned.append(str(k.id))
+                
+                await self.send_autoreply(message, k)
 
         
 
