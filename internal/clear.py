@@ -22,6 +22,9 @@ async def clear(ctx: commands.Context, message: discord.Message):
 
         if emoji == constants.CLEAR_REACTION_EMOJI:
             return True
-        return False
+        else:
+            await message.remove_reaction(constants.CLEAR_REACTION_EMOJI, message.author)
+            return False
     except asyncio.TimeoutError:
+        await message.remove_reaction(constants.CLEAR_REACTION_EMOJI, message.author)
         return False
