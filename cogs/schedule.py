@@ -224,7 +224,7 @@ class Schedule(commands.Cog):
                                 if prev_text == span.text: continue
                                 else: prev_text = span.text
 
-                                if 'gameNote' not in span['class'] and 'pt2' not in span['class']: 
+                                if 'gameNote' not in span['class'] and 'pr2' not in span['class']: 
                                     output += span.text + '\t'
                     output += '\n'
                 output += '\n'
