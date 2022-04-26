@@ -5,6 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 from nextcord.ext import commands
 
+from internal import clear, constants
 
 class Schedule(commands.Cog):
 
@@ -106,6 +107,7 @@ class Schedule(commands.Cog):
         return str(datetime.datetime.now(pytz.utc).replace(hour=time.hour, minute=time.minute).astimezone(tz).strftime("%I:%M %p"))
 
     @commands.command()
+    @commands.bot_has_permissions(add_reactions=True)
     async def schedule(self, ctx, *, league):
         """
         Scrapes espn for ongoing/upcoming sporting events.
@@ -153,7 +155,7 @@ class Schedule(commands.Cog):
                     else: headings_count += 1
                     content = heading.find('span')
                     if content is None: output += '\t'
-                    else: output += content.text + '\t'
+                    else: output += content.text.upper() + '\t'
                 output += '\n'
 
                 # populate matches
@@ -197,7 +199,7 @@ class Schedule(commands.Cog):
                         except (ValueError, KeyError) as e:
                             headings_count += 1
 
-                    output += heading.text + '\t'
+                    output += heading.text.upper() + '\t'
                 output += '\n'
 
                 # populate matches
@@ -229,7 +231,13 @@ class Schedule(commands.Cog):
                     output += '\n'
                 output += '\n'
 
-        await ctx.send(output)
+        msg = await ctx.send(output)
+        
+        cleared = await clear.clear(ctx, msg)
+
+        if cleared == True:
+            # await msg.edit(content=f'{constants.CLEAR_REACTION_EMOJI} Cleared long message')
+            await msg.delete()
             
 def setup(bot):
     bot.add_cog(Schedule(bot))
