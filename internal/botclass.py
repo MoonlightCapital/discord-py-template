@@ -66,9 +66,11 @@ class Bot(commands.Bot):
               f'Template Maker: SourSpoon / Spoon#0001')
         print('-' * 10)
 
+        await self.change_presence(activity=discord.Game('wb help'))
+
     async def on_message(self, message):
         """
-        This event triggers on every message received by the bot. Including one's that it sent itself.
+        This event triggers on every message received by the bot. Including ones that it sent itself.
 
         If you wish to have multiple event listeners they can be added in other cogs. All on_message listeners should
         always ignore bots.
