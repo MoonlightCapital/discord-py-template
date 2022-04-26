@@ -110,17 +110,15 @@ class Schedule(commands.Cog):
     @commands.bot_has_permissions(add_reactions=True)
     async def schedule(self, ctx, *, league):
         """
-        Scrapes espn for ongoing/upcoming sporting events.
+        Scrapes espn for ongoing/upcoming sporting events. Add to the bot's ❌ reaction to have the message deleted (option timeout is 2min).
         """
         league = league.lower()
-        league_name = self.LEAGUE_ALIASES[league]
-        if league_name is None:
+        try:
+            league_name = self.LEAGUE_ALIASES[league]
+        except (KeyError) as e:
             print('schedule.py 116: invalid league alias')
-            await ctx.send('Beep boop. I do not recognize that league parameter. Try a more conventional name for the league, or petition for it to be included.')
+            await ctx.send(f'Beep boop. I do not recognize that league parameter. Try a more conventional name for `{league}`, or petition for it to be included.')
             return
-
-        # need to include a dictionary of different aliases for each prominent sports league, to ensure a user-friendly command
-
 
         response = requests.get(f"https://www.espn.com/{league_name}/schedule")
         page = BeautifulSoup(response.content, 'html.parser')
