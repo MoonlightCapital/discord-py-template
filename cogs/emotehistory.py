@@ -50,6 +50,7 @@ class EmoteHistory(commands.Cog):
 
         async for message in channel.history(before=before_date, after=pytz.utc.localize(after_date)):
             # examine reactions
+            print(str(message.created_at) + ' - ' + message.content)
             for reaction in message.reactions:
                 if reaction.emoji.name in emote_dict: emote_dict[reaction.emoji.name] += reaction.count
         
@@ -57,7 +58,8 @@ class EmoteHistory(commands.Cog):
         sorted_emotes = dict(sorted(emote_dict.items(), key=lambda x: x[1], reverse=True))
         output = 'Here are the results of the custom reaction tally:\n```'
         for k, v in sorted_emotes.items():
-            output += k + ' - ' + str(v) + '\n'
+            if v == 0: output += k + ', '
+            else: output += k + ' - ' + str(v) + '\n'
         output += '```'
 
         await ctx.send(output)
