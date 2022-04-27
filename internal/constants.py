@@ -6,5 +6,6 @@ If you wish to add or edit a constant, please make sure to comment the meaning o
 CONFIRM_REACTION_EMOJI = '🟢' # Reaction emoji used to confirm actions
 CANCEL_REACTION_EMOJI = '🟥' # Reaction emoji used to cancel actions
 CLEAR_REACTION_EMOJI = '❌' # Reaction emoji used to clear a long response
+AFFIRMATIVE_REACTION_EMOJI = '👍' # Reaction emoji used to clear a long response
 
 CONFIRMATION_TEXT = f'*Please react to this message with {CONFIRM_REACTION_EMOJI} to continue, or react with {CANCEL_REACTION_EMOJI} to cancel. Waiting for two minutes will cancel the process automatically.*' # Message sent at the bottom of every reaction confirmaation

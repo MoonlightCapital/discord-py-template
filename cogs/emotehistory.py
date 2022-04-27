@@ -2,6 +2,7 @@ import string
 from datetime import datetime
 import pytz
 import sys
+from internal import constants
 import nextcord as discord
 from nextcord.ext import commands
 
@@ -15,6 +16,8 @@ class EmoteHistory(commands.Cog):
         """
         Counts custom emote usage for all messages in a given channel *after* a given date. Can limit the date range with an optional end date. Dates must be %m/%d/%y (say, 4-25-22)
         """
+        await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
+
         emote_dict = {}
         after_date = datetime.strptime(after, '%m-%d-%y')
         before_date = None if endRange is None else pytz.utc.localize(datetime.strptime(after, '%m-%d-%y'))
@@ -42,13 +45,16 @@ class EmoteHistory(commands.Cog):
             prev_value = v
         output += '```'
 
-        await ctx.send(output)
+        msg = await ctx.send(output)
+        await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
     
     @commands.command(name='tally-reactions')
     async def tally_reactions(self, ctx, channel:discord.TextChannel, after, endRange=None):
         """
         Counts custom emote usage as reactions for all messages in a given channel *after* a given date. Can limit the date range with an optional end date. Dates must be %m/%d/%y (say, 4-25-22)
         """
+        await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
+
         emote_dict = {}
         after_date = datetime.strptime(after, '%m-%d-%y')
         before_date = None if endRange is None else pytz.utc.localize(datetime.strptime(after, '%m-%d-%y'))
@@ -77,7 +83,8 @@ class EmoteHistory(commands.Cog):
             prev_value = v
         output += '```'
 
-        await ctx.send(output)
+        msg = await ctx.send(output)
+        await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
 
 def setup(bot):
     bot.add_cog(EmoteHistory(bot))
