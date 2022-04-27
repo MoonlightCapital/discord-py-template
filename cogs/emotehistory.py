@@ -25,8 +25,10 @@ class EmoteHistory(commands.Cog):
             # split message on colons and compare the 2nd - n-1th elements looking for dict entries to increment
             print(str(message.created_at) + ' - ' + message.content)
             splitted = message.content.split(':')
-            for section in splitted:
-                if section in emote_dict: emote_dict[section] += 1
+            length = len(splitted)
+            for i in range(length):
+                if i == 0 or i == length - 1: continue
+                if splitted[i] in emote_dict: emote_dict[splitted[i]] += 1
         
         # sort on descending quantity
         sorted_emotes = dict(sorted(emote_dict.items(), key=lambda x: x[1], reverse=True))
