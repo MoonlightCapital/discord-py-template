@@ -37,7 +37,6 @@ class EmoteHistory(commands.Cog):
 
         async for message in channel.history(limit=sys.maxsize, before=before_date, after=pytz.utc.localize(after_date)):
             # split message on colons and compare the 2nd - n-1th elements looking for dict entries to increment
-            print(str(message.created_at) + ' - ' + message.content)
             splitted = message.content.split(':')
             length = len(splitted)
             for i in range(length):
@@ -63,7 +62,6 @@ class EmoteHistory(commands.Cog):
 
         async for message in channel.history(limit=sys.maxsize, before=before_date, after=pytz.utc.localize(after_date)):
             # examine reactions
-            print(str(message.created_at) + ' - ' + message.content)
             for reaction in message.reactions:
                 if isinstance(reaction.emoji, str):
                     if reaction.emoji in emote_dict:  emote_dict[reaction.emoji] += reaction.count 
@@ -89,7 +87,6 @@ class EmoteHistory(commands.Cog):
 
         async for message in channel.history(limit=sys.maxsize, before=before_date, after=pytz.utc.localize(after_date)):
             # examine reactions
-            print(str(message.created_at) + ' - ' + message.content)
             for reaction in message.reactions:
                 if isinstance(reaction.emoji, str):
                     if reaction.emoji in emote_dict:  emote_dict[reaction.emoji] += reaction.count 
@@ -128,7 +125,6 @@ class EmoteHistory(commands.Cog):
             if channel.permissions_for(ctx.me).read_message_history == False: continue
             async for message in channel.history(limit=sys.maxsize, before=before_date, after=pytz.utc.localize(after_date)):
                 # examine reactions
-                print(str(message.created_at) + ' - ' + message.content)
                 for reaction in message.reactions:
                     if isinstance(reaction.emoji, str):
                         if reaction.emoji in emote_dict:  emote_dict[reaction.emoji] += reaction.count 
