@@ -1,6 +1,7 @@
 import string
 from datetime import datetime
 import pytz
+import sys
 import nextcord as discord
 from nextcord.ext import commands
 
@@ -20,7 +21,7 @@ class EmoteHistory(commands.Cog):
         for emote in ctx.guild.emojis:
             emote_dict[emote.name] = 0
 
-        async for message in channel.history(before=before_date, after=pytz.utc.localize(after_date)):
+        async for message in channel.history(limit=sys.maxsize, before=before_date, after=pytz.utc.localize(after_date)):
             # split message on colons and compare the 2nd - n-1th elements looking for dict entries to increment
             print(str(message.created_at) + ' - ' + message.content)
             splitted = message.content.split(':')
@@ -30,8 +31,13 @@ class EmoteHistory(commands.Cog):
         # sort on descending quantity
         sorted_emotes = dict(sorted(emote_dict.items(), key=lambda x: x[1], reverse=True))
         output = 'Here are the results of the custom emote tally:\n```'
+        prev_value = -1
         for k, v in sorted_emotes.items():
-            output += k + ' - ' + str(v) + '\n'
+            if v != prev_value:
+                if v == 1: output += '\n' + str(v) + ' use: ' + k
+                else: output += '\n' + str(v) + ' uses: ' + k
+            else: output += ', ' + k
+            prev_value = v
         output += '```'
 
         await ctx.send(output)
@@ -48,18 +54,25 @@ class EmoteHistory(commands.Cog):
             emote_dict[emote.name] = 0
             
 
-        async for message in channel.history(before=before_date, after=pytz.utc.localize(after_date)):
+        async for message in channel.history(limit=sys.maxsize, before=before_date, after=pytz.utc.localize(after_date)):
             # examine reactions
             print(str(message.created_at) + ' - ' + message.content)
             for reaction in message.reactions:
-                if reaction.emoji.name in emote_dict: emote_dict[reaction.emoji.name] += reaction.count
+                if isinstance(reaction.emoji, str):
+                    if reaction.emoji in emote_dict:  emote_dict[reaction.emoji] += reaction.count 
+                else: 
+                    if reaction.emoji.name in emote_dict: emote_dict[reaction.emoji.name] += reaction.count
         
         # sort on descending quantity
         sorted_emotes = dict(sorted(emote_dict.items(), key=lambda x: x[1], reverse=True))
         output = 'Here are the results of the custom reaction tally:\n```'
+        prev_value = -1
         for k, v in sorted_emotes.items():
-            if v == 0: output += k + ', '
-            else: output += k + ' - ' + str(v) + '\n'
+            if v != prev_value:
+                if v == 1: output += '\n' + str(v) + ' use: ' + k
+                else: output += '\n' + str(v) + ' uses: ' + k
+            else: output += ', ' + k
+            prev_value = v
         output += '```'
 
         await ctx.send(output)
