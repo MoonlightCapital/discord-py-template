@@ -231,7 +231,7 @@ class Schedule(commands.Cog):
 
         msg = await ctx.send(output)
         
-        cleared = await clear.clear(ctx, msg)
+        cleared = await clear.author_clear(ctx, msg)
 
         if cleared == True:
             # await msg.edit(content=f'{constants.CLEAR_REACTION_EMOJI} Cleared long message')

@@ -3,11 +3,10 @@ from nextcord.ext import commands
 import asyncio
 from internal import constants
 
-async def clear(ctx: commands.Context, message: discord.Message):
+async def author_clear(ctx: commands.Context, message: discord.Message):
     """
     Creates a confirm/cancel reaction menu that returns True or False depending on which reaction was clicked.
-
-    If a timeout occurs, it will return None.
+    Only accepts reactions that come from the original author of the command.
     """
 
     def check(r, u):
@@ -28,3 +27,18 @@ async def clear(ctx: commands.Context, message: discord.Message):
     except asyncio.TimeoutError:
         await message.remove_reaction(constants.CLEAR_REACTION_EMOJI, message.author)
         return False
+
+async def clear_on_message_deleted(bot, message: discord.Message, originalMessage: discord.Message):
+    """
+    Waits to see if another message is deleted to delete the bot's message, or eventually deletes itself unprompted.
+    """
+
+    def check(deletedMessage):
+        return deletedMessage.id == originalMessage.id
+
+    try:
+        await bot.wait_for('message_delete', timeout=300.0, check=check)
+
+        await message.delete()
+    except asyncio.TimeoutError:
+        await message.delete()
