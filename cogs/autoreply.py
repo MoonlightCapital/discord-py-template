@@ -132,7 +132,7 @@ class AutoReply(commands.Cog):
         if message.author.bot: return  # ignore all bots
         if message.content[0:12] == 'wb autoreply': return # ignore commands from this module
             
-        print('reading message for autoreply...')
+        print('Autoreply.py: reading message...')
         mentioned = []
 
         for i in message.mentions:
