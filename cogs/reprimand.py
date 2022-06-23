@@ -17,12 +17,7 @@ class Reprimand(commands.Cog):
         if (user is None):  user = await self.bot.fetch_user(userId)
         return user.display_name
 
-    @commands.command()
-    async def reprimand(self, ctx, mandee: discord.User, *, reason=''):
-        """
-        Basic reprimand command, called with the name of the reprimandee. Record is made of the reprimand in the database.
-        """
-
+    async def process_reprimand(self, mandee: discord.User, reason=''):
         print('Starting reprimand')
         existing_entry = await self.find_user(str(mandee.id))
         pprint.pprint(existing_entry)
@@ -48,7 +43,15 @@ class Reprimand(commands.Cog):
         response = "" + mandee.display_name + ", you're reprimanded!"
         if reason != '': response += " Reason given: `" + reason + "`"
 
-        msg = await ctx.send(response)
+        return response
+
+    @commands.command()
+    async def reprimand(self, ctx, mandee: discord.User, *, reason=''):
+        """
+        Basic reprimand command, called with the name of the reprimandee. Record is made of the reprimand in the database.
+        """
+
+        msg = await ctx.send(self.process_reprimand(mandee, reason))
 
     @commands.command()
     async def reprimands(self, ctx, mandee:discord.User=None):
@@ -117,8 +120,8 @@ class Reprimand(commands.Cog):
                 await ctx.send("Here is the full reprimand log:", file=discord.File(file, "result.txt"))
 
 
-    @commands.command(name='reprimand clear')
     @commands.is_owner()
+    @commands.command()
     async def reprimand_clear(self, ctx, mandee: discord.User):
         """
         Admin: Clears a given user from the reprimand log. 
