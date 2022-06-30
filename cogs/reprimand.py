@@ -50,8 +50,8 @@ class Reprimand(commands.Cog):
         """
         Basic reprimand command, called with the name of the reprimandee. Record is made of the reprimand in the database.
         """
-
-        msg = await ctx.send(self.process_reprimand(mandee, reason))
+        confirmation = await self.process_reprimand(mandee, reason)
+        msg = await ctx.send(confirmation)
 
     @commands.command()
     async def reprimands(self, ctx, mandee:discord.User=None):
