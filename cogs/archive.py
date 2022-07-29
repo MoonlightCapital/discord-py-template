@@ -35,11 +35,14 @@ class Archive(commands.Cog):
 
                 # process attachments, appropriately assign filetypes to images
                 # other filetypes can be recovered using the information from the content type added to the log
+                print(len(message.attachments))
                 if len(message.attachments) > 0:
+                    print(str(message.attachments[0].content_type))
+                    print(str(message.attachments[0].id))
                     for attachment in message.attachments:
                         filetype = ''
-                        if 'image' in attachment.content_type: filetype = '.png'
-                        output += '[ATTACHMENT] ' + str(attachment.id) + ' content_type: ' + attachment.content_type + '\n'
+                        if 'image' in str(attachment.content_type): filetype = '.png'
+                        output += '[ATTACHMENT] ' + str(attachment.id) + ' content_type: ' + str(attachment.content_type) + '\n'
                         await attachment.save('../archives/' + ctx.channel.name + '/' +str(attachment.id) + filetype)
                 else: output += message.content + '\n'
 
