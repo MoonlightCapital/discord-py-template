@@ -37,5 +37,6 @@ typing-extensions==3.10.0.0
 umongo==3.1.0
 Werkzeug==2.0.2
 yarl==1.7.2
+yfpy
 zope.event==4.5.0
 zope.interface==5.4.0
