@@ -5,3 +5,4 @@ __pycache__
 *.env
 *.db
 template-venv
+data/private.json
