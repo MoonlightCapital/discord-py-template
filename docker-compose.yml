@@ -9,6 +9,7 @@ services:
       - mongo_default
     volumes:
       - /mnt/nas-data/waambot-archives:/archives:rw
+      - /mnt/nas-data/waambot-yahoo:/yahoo:rw
 
 networks:
   mongo_default: 

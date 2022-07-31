@@ -6,3 +6,4 @@ __pycache__
 *.db
 template-venv
 data/private.json
+data/token.json
