@@ -5,7 +5,7 @@ from nextcord.ext import commands
 from yfpy.data import Data
 from yfpy.query import YahooFantasySportsQuery as YahooQuery
 from yfpy.utils import unpack_data
-from yfpy.models import League, Team, Standings
+from yfpy.models import League, Team, Standings, Scoreboard, Manager
 
 from database.FantasyManagers import FantasyManagers
 
@@ -16,7 +16,7 @@ class Yahoo(commands.Cog):
     # Data.retrieve(filename, yf_query, params=None, data_type_class=None, new_data_dir=None)
     controller = Data('../yahoo', True)
 
-    # api id, secret, league_id
+    # api id, secret, league_id, max_team_name_length
     config = None
     with open('data/private.json') as f:
         config = json.load(f)
@@ -62,11 +62,11 @@ class Yahoo(commands.Cog):
                 else: return True
         return commands.check(predicate)
 
-    @commands.group(name='ff')
+    @commands.group(aliases=['ff', 'fantasy'])
     @enforce_sports_channel()
-    async def ff_group(self, ctx): pass
+    async def yahoo(self, ctx): pass
 
-    @ff_group.command()
+    @yahoo.command()
     @enforce_user_registered()
     async def test(self, ctx):
         """
@@ -76,7 +76,7 @@ class Yahoo(commands.Cog):
         msg = await ctx.send('Successful Yahoo FF test')
         pass
  
-    @ff_group.command(name='register')
+    @yahoo.command(name='register')
     async def register(self, ctx, teamNo: int):
         """
         Register a team in the league to yourself. This facilitates other commands such as `wb ff team` to show you your own team by default.
@@ -103,7 +103,7 @@ class Yahoo(commands.Cog):
         else:
             await ctx.send('Error! You have already registered to a team in this channel. If you want to change your registration, use `wb ff unregister`')
 
-    @ff_group.command(name='unregister')
+    @yahoo.command(name='unregister')
     async def unregister(self, ctx):
         """
         Remove the binding between your discord user ID and one of the team IDs in the league.
@@ -116,7 +116,7 @@ class Yahoo(commands.Cog):
             await existing_entry.delete()
             await ctx.send('Success! Binding for ' + ctx.author.name + ' has been removed.')
 
-    @ff_group.command(name='teaminfo')
+    @yahoo.command(name='teaminfo')
     async def teaminfo(self, ctx):
         """
         Retrieve Yahoo Fantasy teams and IDs.
@@ -124,28 +124,46 @@ class Yahoo(commands.Cog):
         print('Fetching fantasy league info...\n')
 
         query = YahooQuery('data/', self.config['league_id'])
-        leagueInfo: League = self.controller.retrieve('league_info', query.get_league_info)
-        leagueTeams = self.controller.retrieve('league_teams', query.get_league_teams)
+
+        leagueInfo: League = self.controller.retrieve(
+            'league_info', 
+            query.get_league_info
+        )
+
+        leagueTeams = self.controller.retrieve(
+            'league_teams', 
+            query.get_league_teams
+        )
+
         output = 'League info acquired for: ' + leagueInfo.name + '\n```'
+        output += 'Id | Team Name              | Manager(s)\n'
         for i in leagueTeams:
-            output += 'Id: ' + str(i['team'].team_id) + '\tName: ' + str(i['team'].name).strip('b') + '\n'# - Manager: ' + str(i['team'].managers[0].nickname) + '\n'
+            team: Team = i['team']
+            id = str(team.team_id).rjust(2, ' ') + ' |'
+            name = ' ' + str(team.name, 'UTF-8').ljust(int(self.config['max_team_name_length']), ' ') + ' |'
+            managers = ' ' + team.managers['manager'].nickname
+
+            output += id + name + managers + '\n'
         output += '```'
 
         msg = await ctx.send(output)
 
-    @ff_group.command(name='standings')
+    @yahoo.command(name='standings')
     async def standings(self, ctx):
         """
         Display the current standings page for the fantasy league.
         """
         query = YahooQuery('data/', self.config['league_id'])
-        standings: Standings = self.controller.retrieve('league_standings', query.get_league_standings)
-        print(standings)
-        output = 'Current Standings:```Rank | Team Name              |  W-L-T    | Pts For | Pts Agnst | Streak | Waiver | Moves\n'
+        standings: Standings = self.controller.retrieve(
+            'league_standings', 
+            query.get_league_standings
+        )
+
+        output = 'Current Standings:```Rank | ' + 'Team Name'.ljust(int(self.config['max_team_name_length']), ' ') + ' |  W-L-T    | Pts For | Pts Agnst | Streak | Waiver | Moves\n'
         for teamObj in standings.teams:
             team: Team = teamObj['team']
             rank = '   0 |' if team.team_standings.rank is None else (str(team.team_standings.rank) + ' |').rjust(6, ' ')
-            name = ' ' + str(team.name, 'UTF-8').ljust(22, ' ') + ' |'
+            name = ' ' + str(team.name, 'UTF-8').ljust(int(self.config['max_team_name_length']), ' ') + ' |'
             wlt = ' ' + str(team.wins).rjust(2, ' ') + ('-' + str(team.losses) + '-' + str(team.ties)).ljust(7, ' ') + ' |'
             ptsFor = ' ' + str(round(team.points_for, 2)).rjust(6, ' ').ljust(7, '0') + ' |'
             ptsAgnst = ' ' + str(round(team.points_against, 2)).rjust(8, ' ').ljust(9, '0') + ' |'
@@ -153,18 +171,41 @@ class Yahoo(commands.Cog):
             waiver = ' ' + ('0' if team.waiver_priority is None else str(team.waiver_priority)).rjust(6, ' ') + ' |'
             moves = ' ' + ('0' if team.number_of_moves is None else str(team.number_of_moves)).rjust(5, ' ')
             output += rank + name + wlt + ptsFor + ptsAgnst + streak + waiver + moves + '\n'
+
         await ctx.send(output + '```')
 
     # potentially include live IRL NFL scoreboard stuff with this, and extend that to the gameday routine.
-    @ff_group.command(name='scoreboard')
+    @yahoo.command(name='scoreboard')
     @enforce_user_registered()
     async def scoreboard(self, ctx, week: int = 0):
         """
         Display the current scoreboard for the fantasy league. Optional week parameter for retrospective/lookahead.
         """
-        pass
+        if (week > 16):
+            await ctx.send('`Week` parameter is out of bounds. Try something less than 17.')
+            return
+
+        query = YahooQuery('data/', self.config['league_id'])
+        league: League = self.controller.retrieve(
+            'league_metadata', 
+            query.get_league_metadata
+        )
+
+        if week == 0: week = int(league.current_week)
+        output = 'Week ' + str(week) + ':```'
+
+        scoreboard: Scoreboard = self.controller.retrieve(
+            'league_scoreboard_week_' + str(week), 
+            query.get_league_scoreboard_by_week, 
+            {'chosen_week': str(week)}
+        )
+
+        for matchup in scoreboard.matchups:
+            pass
+
+        await ctx.send(output + '```')
         
-    @ff_group.command(name='matchup')
+    @yahoo.command(name='matchup')
     @enforce_user_registered()
     async def matchup(self, ctx, matchup: int = 0):
         """
@@ -172,7 +213,7 @@ class Yahoo(commands.Cog):
         """
         pass
         
-    @ff_group.command(name='team')
+    @yahoo.command(name='team')
     @enforce_user_registered()
     async def team(self, ctx, teamId: int = 0):
         """
@@ -180,7 +221,7 @@ class Yahoo(commands.Cog):
         """
         pass
         
-    @ff_group.command(name='gameday')
+    @yahoo.command(name='gameday')
     @enforce_user_registered()
     async def gameday(self, ctx):
         """
