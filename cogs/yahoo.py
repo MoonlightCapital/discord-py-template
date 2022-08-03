@@ -2,10 +2,11 @@ from struct import unpack
 import nextcord as discord
 import json
 from nextcord.ext import commands
+from internal import constants
 from yfpy.data import Data
 from yfpy.query import YahooFantasySportsQuery as YahooQuery
 from yfpy.utils import unpack_data
-from yfpy.models import League, Team, Standings, Scoreboard, Manager
+from yfpy.models import League, Team, Standings, Scoreboard, Matchup, Player, PlayerStats
 
 from database.FantasyManagers import FantasyManagers
 
@@ -44,7 +45,13 @@ class Yahoo(commands.Cog):
 
     def enforce_sports_channel():
         async def predicate(ctx):
-            if ctx.guild is not None and ((str(ctx.guild.name) != 'Dedotated waam' and str(ctx.guild.name) != 'An-D\'s waambot dev') or str(ctx.channel.name) != 's-p-o-r-t-s'):
+            type = str(ctx.channel.type)
+
+            if ctx.guild is not None and (
+                (str(ctx.guild.name) != 'Dedotated waam' and str(ctx.guild.name) != 'An-D\'s waambot dev') or 
+                (type == 'text' and str(ctx.channel.name) != 's-p-o-r-t-s') or
+                (type == 'public_thread' and ctx.channel.parent.name != 's-p-o-r-t-s')):
+                
                 print('ff command used outside of sports channel but not in a DM, skipping..\n')
                 await ctx.send(':rotating_light: Cannot use a waambot ff command in this channel')
                 return False
@@ -62,11 +69,11 @@ class Yahoo(commands.Cog):
                 else: return True
         return commands.check(predicate)
 
-    @commands.group(aliases=['ff', 'fantasy'])
+    @commands.group(aliases=['yahoo', 'fantasy'])
     @enforce_sports_channel()
-    async def yahoo(self, ctx): pass
+    async def ff(self, ctx): pass
 
-    @yahoo.command()
+    @ff.command()
     @enforce_user_registered()
     async def test(self, ctx):
         """
@@ -76,14 +83,17 @@ class Yahoo(commands.Cog):
         msg = await ctx.send('Successful Yahoo FF test')
         pass
  
-    @yahoo.command(name='register')
+    @ff.command(name='register')
     async def register(self, ctx, teamNo: int):
         """
         Register a team in the league to yourself. This facilitates other commands such as `wb ff team` to show you your own team by default.
         """
         # Pull team ID info
         query = YahooQuery('data/', self.config['league_id'])
-        leagueTeams = self.controller.retrieve('league_teams', query.get_league_teams)
+        leagueTeams = self.controller.retrieve(
+            'league_teams', 
+            query.get_league_teams
+        )
 
         # Stop if teamNo is bad
         if (teamNo < 0 or teamNo > len(leagueTeams)):
@@ -103,7 +113,7 @@ class Yahoo(commands.Cog):
         else:
             await ctx.send('Error! You have already registered to a team in this channel. If you want to change your registration, use `wb ff unregister`')
 
-    @yahoo.command(name='unregister')
+    @ff.command(name='unregister')
     async def unregister(self, ctx):
         """
         Remove the binding between your discord user ID and one of the team IDs in the league.
@@ -116,7 +126,7 @@ class Yahoo(commands.Cog):
             await existing_entry.delete()
             await ctx.send('Success! Binding for ' + ctx.author.name + ' has been removed.')
 
-    @yahoo.command(name='teaminfo')
+    @ff.command(name='teaminfo')
     async def teaminfo(self, ctx):
         """
         Retrieve Yahoo Fantasy teams and IDs.
@@ -148,7 +158,7 @@ class Yahoo(commands.Cog):
 
         msg = await ctx.send(output)
 
-    @yahoo.command(name='standings')
+    @ff.command(name='standings')
     async def standings(self, ctx):
         """
         Display the current standings page for the fantasy league.
@@ -175,7 +185,7 @@ class Yahoo(commands.Cog):
         await ctx.send(output + '```')
 
     # potentially include live IRL NFL scoreboard stuff with this, and extend that to the gameday routine.
-    @yahoo.command(name='scoreboard')
+    @ff.command(name='scoreboard')
     @enforce_user_registered()
     async def scoreboard(self, ctx, week: int = 0):
         """
@@ -185,27 +195,86 @@ class Yahoo(commands.Cog):
             await ctx.send('`Week` parameter is out of bounds. Try something less than 17.')
             return
 
-        query = YahooQuery('data/', self.config['league_id'])
+        await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
+        exposition = await ctx.send('This will take several seconds: I need to make many API calls.')
+
+        #query = YahooQuery('data/', self.config['league_id'])
+        query = YahooQuery('data/', league_id='950358', game_id=406)
         league: League = self.controller.retrieve(
             'league_metadata', 
             query.get_league_metadata
         )
 
         if week == 0: week = int(league.current_week)
-        output = 'Week ' + str(week) + ':```'
 
         scoreboard: Scoreboard = self.controller.retrieve(
             'league_scoreboard_week_' + str(week), 
             query.get_league_scoreboard_by_week, 
-            {'chosen_week': str(week)}
+            {'chosen_week': week}
         )
 
-        for matchup in scoreboard.matchups:
-            pass
+        # Write out each matchup
+        count = 0
+        messages = []
+        for matchupObj in scoreboard.matchups:
+            count += 1
+            output = '```Week ' + str(week) + ' Matchup ' + str(count) + ':\n'
 
-        await ctx.send(output + '```')
+            matchup: Matchup = matchupObj['matchup']
+            team1: Team = matchup.teams[0]['team']
+            team2: Team = matchup.teams[1]['team']
+            output += '' + str(team1.name, 'UTF-8')[:20].rjust(20, ' ') + ' vs. ' + str(team2.name, 'UTF-8')[:20].ljust(20, ' ') + '\n'
+
+            players1 = self.controller.retrieve(
+                ('team_' + str(team1.team_id) + 'roster_player_stats_by_week_' + str(week)),
+                query.get_team_roster_player_stats_by_week,
+                {
+                    'team_id': str(team1.team_id),
+                    'chosen_week': week
+                }
+            )
+            
+            players2 = self.controller.retrieve(
+                ('team_' + str(team2.team_id) + 'roster_player_stats_by_week_' + str(week)),
+                query.get_team_roster_player_stats_by_week,
+                {
+                    'team_id': str(team2.team_id),
+                    'chosen_week': week
+                }
+            )
+
+            # Take out bench players to streamline the char count
+            sortedPlayers1 = list(player for player in players1 if (player['player'].selected_position.position != 'BN' and player['player'].selected_position.position != 'IR'))
+            sortedPlayers2 = list(player for player in players2 if (player['player'].selected_position.position != 'BN' and player['player'].selected_position.position != 'IR'))
+
+            # Write out player scoring by position (bench omitted for brevity)
+            smallerPlayerCount = len(sortedPlayers1) if len(sortedPlayers1) < len(sortedPlayers2) else len(sortedPlayers2)
+            for i in range(smallerPlayerCount):
+                player1: Player = sortedPlayers1[i]['player']
+                player2: Player = sortedPlayers2[i]['player']
+                name1 = ('' + player1.first_name[:1] + '. ' + player1.last_name) if player1.last_name is not None else player1.full_name
+                name2 = ('' + player2.first_name[:1] + '. ' + player2.last_name) if player2.last_name is not None else player2.full_name
+                points1 = '0.0' if player1.player_points.total is None else player1.player_points.total
+                points2 = '0.0' if player2.player_points.total is None else player2.player_points.total
+                position = 'FLX' if player1.selected_position.position == 'W/R/T' else player1.selected_position.position
+                output += '' + name1[:15].ljust(15, ' ') + str(points1).rjust(5, ' ') + ' ' + position.ljust(3, ' ') + ' ' + str(points2).ljust(5, ' ') + name2[:15].rjust(15, ' ') + '\n'
+            
+            # Totals line /w total prediction
+            output += 'Proj ' + ('(' + str(team1.team_projected_points.total) + ') ' + str(team1.team_points.total)).rjust(15, ' ') + ' TOT '
+            output += ('' + str(team2.team_points.total) + ' (' + str(team2.team_projected_points.total) + ')').ljust(15, ' ') + ' Proj'
+
+            print(len(output))
+            messages.append(output + '```')
         
-    @yahoo.command(name='matchup')
+        await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, exposition.author)
+        
+        msg: list(discord.Message) = []
+        for text in messages:
+            msg.append(await ctx.send(text))
+        
+        await exposition.delete()
+        
+    @ff.command(name='matchup')
     @enforce_user_registered()
     async def matchup(self, ctx, matchup: int = 0):
         """
@@ -213,7 +282,7 @@ class Yahoo(commands.Cog):
         """
         pass
         
-    @yahoo.command(name='team')
+    @ff.command(name='team')
     @enforce_user_registered()
     async def team(self, ctx, teamId: int = 0):
         """
@@ -221,7 +290,7 @@ class Yahoo(commands.Cog):
         """
         pass
         
-    @yahoo.command(name='gameday')
+    @ff.command(name='gameday')
     @enforce_user_registered()
     async def gameday(self, ctx):
         """
