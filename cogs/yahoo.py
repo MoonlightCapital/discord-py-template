@@ -7,6 +7,7 @@ from threading import Thread
 from concurrent.futures import ThreadPoolExecutor, wait
 from nextcord.ext import commands
 from internal import constants
+from espn_api.football import League as EspnLeague, Player as EspnPlayer
 from yfpy.data import Data
 from yfpy.query import YahooFantasySportsQuery as YahooQuery
 from yfpy.utils import unpack_data
@@ -25,6 +26,13 @@ class Yahoo(commands.Cog):
     config = None
     with open('data/private.json') as f:
         config = json.load(f)
+    
+    espnLeague = EspnLeague(
+        int(config['espn_id']),
+        int(config['year']),
+        config['espn_s2'],
+        config['espn_swid']
+    )
         
     async def find_user(self, userId):
         return await FantasyManagers.find_one({'_id': userId, 'league': self.config['league_id']})
@@ -46,6 +54,32 @@ class Yahoo(commands.Cog):
         new_entry['league'] = self.config['league_id']
         await new_entry.commit()
         return True
+
+    def get_all_player_projections(self, playerNames, week):
+
+        playerProjections = {}
+
+        for name in playerNames:
+            player: EspnPlayer = self.espnLeague.player_info(name)
+            print(player is None)
+            print(week not in player.stats)
+            print('projected_breakdown' in player.stats[week])
+            print('points' in player.stats[week])
+
+            # Check if weekly projection is not out (offseason)
+            if (player is None or week not in player.stats):
+                playerProjections[name]: float = 0.0
+
+            # Check if projection section exists (game has not yet been played, happy path)
+            elif ('projected_breakdown' in player.stats[week]):
+                projRec: float = 0 if 'receivingReceptions' not in player.stats[week]['breakdown'] else player.stats[week]['breakdown']['receivingReceptions']
+                playerProjections[name]: float = round((player.stats[week]['projected_points'] - (projRec / 2)), 2)
+
+            else:
+                rec: float = 0 if 'receivingReceptions' not in player.stats[week]['breakdown'] else player.stats[week]['breakdown']['receivingReceptions']
+                playerProjections[name]: float = round((float(player.stats[week]['points']) - (rec / 2)), 2)
+        
+        return playerProjections
 
     def enforce_sports_channel():
         async def predicate(ctx):
@@ -85,7 +119,11 @@ class Yahoo(commands.Cog):
         """
         print('Successful Yahoo FF test\n')
         msg = await ctx.send('Successful Yahoo FF test')
-        pass
+
+        playerProjections = self.get_all_player_projections(['Kyler Murray', 'Travis Kelce', 'DeAndre Hopkins'], 1)
+        print(playerProjections['Kyler Murray'])
+        print(playerProjections['Travis Kelce'])
+        print(playerProjections['DeAndre Hopkins'])
  
     @ff.command(name='register')
     async def register(self, ctx, teamNo: int):
@@ -302,37 +340,6 @@ class Yahoo(commands.Cog):
         if matchup == 0:
             existing_entry = await self.find_user(str(ctx.author.id))
         
-        prequery = str(datetime.datetime.now())
-        query = YahooQuery('data/', league_id='950358', game_id=406)
-        league: League = self.controller.retrieve(
-            'league_metadata', 
-            query.get_league_metadata
-        )
-        postquery1 = str(datetime.datetime.now())
-
-        week = 3
-        if week == 0: week = int(league.current_week)
-
-        teammatchups = self.controller.retrieve(
-            'team' + str(matchup) + '_matchups', 
-            query.get_team_matchups, 
-            {'team_id': 2}
-        )
-        print('Pre-Query: ' + prequery)
-        print('Post-Query 1: ' + postquery1)
-        print('Post-Query 2: ' + str(datetime.datetime.now()))
-        await ctx.send('test')
-        print('Post-Msg 1: ' + str(datetime.datetime.now()))
-        await ctx.send('test')
-        print('Post-Msg 2: ' + str(datetime.datetime.now()))
-        await ctx.send('test')
-        print('Post-Msg 3: ' + str(datetime.datetime.now()))
-        await ctx.send('test')
-        print('Post-Msg 4: ' + str(datetime.datetime.now()))
-        await ctx.send('test')
-        print('Post-Msg 5: ' + str(datetime.datetime.now()))
-        await ctx.send('test')
-        print('Post-Msg 6: ' + str(datetime.datetime.now()))
         # get_league_matchups_by_week
         # get_team_roster_by_week x2
         
