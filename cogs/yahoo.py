@@ -1,3 +1,4 @@
+from re import A
 from struct import unpack
 from time import sleep
 import nextcord as discord
@@ -55,31 +56,111 @@ class Yahoo(commands.Cog):
         await new_entry.commit()
         return True
 
+    # Sorts through playerNames list an assigns them in an alternating fashion to team1 and team2 projections
     def get_all_player_projections(self, playerNames, week):
 
-        playerProjections = {}
+        team1Projections = []
+        team2Projections = []
 
-        for name in playerNames:
+        # Must add 1 point per interception and -0.5 points per reception
+        # to adjust for different scoring rules between my espn/yahoo leagues
+        for index, name in enumerate(playerNames):
             player: EspnPlayer = self.espnLeague.player_info(name)
-            print(player is None)
-            print(week not in player.stats)
-            print('projected_breakdown' in player.stats[week])
-            print('points' in player.stats[week])
+            tempFloat: float = 0.0
 
             # Check if weekly projection is not out (offseason)
             if (player is None or week not in player.stats):
-                playerProjections[name]: float = 0.0
+                pass
 
             # Check if projection section exists (game has not yet been played, happy path)
             elif ('projected_breakdown' in player.stats[week]):
-                projRec: float = 0 if 'receivingReceptions' not in player.stats[week]['breakdown'] else player.stats[week]['breakdown']['receivingReceptions']
-                playerProjections[name]: float = round((player.stats[week]['projected_points'] - (projRec / 2)), 2)
+                projRec: float = 0.0 if 'receivingReceptions' not in player.stats[week]['projected_breakdown'] else player.stats[week]['projected_breakdown']['receivingReceptions']
+                projPassInt: float = 0.0 if 'passingInterceptions' not in player.stats[week]['projected_breakdown'] else player.stats[week]['projected_breakdown']['passingInterceptions']
+                tempFloat = round((player.stats[week]['projected_points'] - (projRec / 2) + projPassInt), 2)
 
             else:
-                rec: float = 0 if 'receivingReceptions' not in player.stats[week]['breakdown'] else player.stats[week]['breakdown']['receivingReceptions']
-                playerProjections[name]: float = round((float(player.stats[week]['points']) - (rec / 2)), 2)
+                rec: float = 0.0 if 'receivingReceptions' not in player.stats[week]['breakdown'] else player.stats[week]['breakdown']['receivingReceptions']
+                passInt: float = 0.0 if 'passingInterceptions' not in player.stats[week]['breakdown'] else player.stats[week]['breakdown']['passingInterceptions']
+                tempFloat = round((float(player.stats[week]['points']) - (rec / 2) + passInt), 2)
+
+            if (index % 2 == 0): team1Projections.append(tempFloat)
+            else: team2Projections.append(tempFloat)
+
+        return team1Projections, team2Projections
+
+    def do_matchup(self, count, messages, matchup: Matchup, query: YahooQuery, week: int):
+        output = '```Week ' + str(week) + ' Matchup ' + str(count + 1) + ':\n'
+
+        team1: Team = matchup.teams[0]['team']
+        team2: Team = matchup.teams[1]['team']
+        manager1: str = ' (' + team1.managers['manager'].nickname + ')'
+        manager2: str = ' (' + team2.managers['manager'].nickname + ')'
+        output += '' + (str(team1.name, 'UTF-8') + manager1)[:35].rjust(35, ' ') + ' vs. ' + (str(team2.name, 'UTF-8') + manager2)[:35].ljust(35, ' ') + '\n'
+
+        players1 = self.controller.retrieve(
+            ('team_' + str(team1.team_id) + 'roster_player_stats_by_week_' + str(week)),
+            query.get_team_roster_player_stats_by_week,
+            {
+                'team_id': str(team1.team_id),
+                'chosen_week': week
+            }
+        )
         
-        return playerProjections
+        players2 = self.controller.retrieve(
+            ('team_' + str(team2.team_id) + 'roster_player_stats_by_week_' + str(week)),
+            query.get_team_roster_player_stats_by_week,
+            {
+                'team_id': str(team2.team_id),
+                'chosen_week': week
+            }
+        )
+
+        # Take out bench players to streamline the char count
+        sortedPlayers1 = list(
+            player for player in players1 if (
+                player['player'].selected_position.position != 'BN' and player['player'].selected_position.position != 'IR'
+                )
+            )
+        sortedPlayers2 = list(
+            player for player in players2 if (
+                player['player'].selected_position.position != 'BN' and player['player'].selected_position.position != 'IR'
+                )
+            )
+        
+        # Write out player scoring by position (bench omitted for brevity)
+        smallerPlayerCount = len(sortedPlayers1) if len(sortedPlayers1) < len(sortedPlayers2) else len(sortedPlayers2)
+
+        # Compile list of player strings to fetch projections
+        allPlayerNames = []
+        for i in range(smallerPlayerCount):
+            if (sortedPlayers1[i]['player'].selected_position.position == 'DEF'): allPlayerNames.append((sortedPlayers1[i]['player'].editorial_team_full_name.split(' ')[-1] + ' D/ST'))
+            else: allPlayerNames.append(sortedPlayers1[i]['player'].full_name)
+            if (sortedPlayers2[i]['player'].selected_position.position == 'DEF'): allPlayerNames.append((sortedPlayers2[i]['player'].editorial_team_full_name.split(' ')[-1] + ' D/ST'))
+            else: allPlayerNames.append(sortedPlayers2[i]['player'].full_name)
+        team1Projections, team2Projections = self.get_all_player_projections(allPlayerNames, week)
+
+        for i in range(smallerPlayerCount):
+            player1: Player = sortedPlayers1[i]['player']
+            player2: Player = sortedPlayers2[i]['player']
+            name1 = ('' + player1.first_name[:1] + '. ' + player1.last_name) if player1.last_name is not None else player1.full_name
+            name2 = ('' + player2.first_name[:1] + '. ' + player2.last_name) if player2.last_name is not None else player2.full_name
+            proj1 = ('(' + str(team1Projections[i]) + ')').rjust(7, ' ')
+            proj2 = ('(' + str(team2Projections[i]) + ')').ljust(7, ' ')
+            points1 = '0.0' if player1.player_points.total is None else player1.player_points.total
+            points2 = '0.0' if player2.player_points.total is None else player2.player_points.total
+            position = 'FLX' if player1.selected_position.position == 'W/R/T' else player1.selected_position.position
+            number1 = ('#' + str(player1.uniform_number).ljust(3, ' ')) if (player1.uniform_number is not False and player1.uniform_number is not None) else '    '
+            number2 = (' #' + str(player2.uniform_number).ljust(3, ' ')) if (player2.uniform_number is not False and player2.uniform_number is not None) else '     '
+            teamcode1 = player1.editorial_team_abbr.ljust(4, ' ')
+            teamcode2 = player2.editorial_team_abbr.rjust(3, ' ')
+            output += '' + teamcode1 + number1 + name1[:15].ljust(15, ' ') + proj1 + str(points1).rjust(5, ' ') + ' '
+            output += position.ljust(3, ' ') + ' ' + str(points2).ljust(5, ' ') + proj2 + name2[:15].rjust(15, ' ') + number2 + teamcode2 + '\n'
+        
+        # Totals line /w total prediction
+        output += '(Proj)  Total ' + ('(' + str(team1.team_projected_points.total) + ') ' + str(team1.team_points.total)).rjust(21, ' ') + ' TOT '
+        output += ('' + str(team2.team_points.total) + ' (' + str(team2.team_projected_points.total) + ')').ljust(21, ' ') + ' Total  (Proj)'
+
+        messages[count] = (output + '```')
 
     def enforce_sports_channel():
         async def predicate(ctx):
@@ -119,11 +200,6 @@ class Yahoo(commands.Cog):
         """
         print('Successful Yahoo FF test\n')
         msg = await ctx.send('Successful Yahoo FF test')
-
-        playerProjections = self.get_all_player_projections(['Kyler Murray', 'Travis Kelce', 'DeAndre Hopkins'], 1)
-        print(playerProjections['Kyler Murray'])
-        print(playerProjections['Travis Kelce'])
-        print(playerProjections['DeAndre Hopkins'])
  
     @ff.command(name='register')
     async def register(self, ctx, teamNo: int):
@@ -238,7 +314,6 @@ class Yahoo(commands.Cog):
             return
 
         await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
-        exposition = await ctx.send('This will take several seconds: I need to make many API calls.')
 
         #query = YahooQuery('data/', self.config['league_id'])
         query = YahooQuery('data/', league_id='950358', game_id=406)
@@ -254,82 +329,70 @@ class Yahoo(commands.Cog):
             {'chosen_week': week}
         )
 
-        def do_matchup(count, messages, matchup: Matchup):
-            output = '```Week ' + str(week) + ' Matchup ' + str(count + 1) + ':\n'
-
-            team1: Team = matchup.teams[0]['team']
-            team2: Team = matchup.teams[1]['team']
-            manager1: str = ' (' + team1.managers['manager'].nickname + ')'
-            manager2: str = ' (' + team2.managers['manager'].nickname + ')'
-            output += '' + (str(team1.name, 'UTF-8') + manager1)[:30].rjust(30, ' ') + ' vs. ' + (str(team2.name, 'UTF-8') + manager2)[:30].ljust(30, ' ') + '\n'
-
-            players1 = self.controller.retrieve(
-                ('team_' + str(team1.team_id) + 'roster_player_stats_by_week_' + str(week)),
-                query.get_team_roster_player_stats_by_week,
-                {
-                    'team_id': str(team1.team_id),
-                    'chosen_week': week
-                }
-            )
-            
-            players2 = self.controller.retrieve(
-                ('team_' + str(team2.team_id) + 'roster_player_stats_by_week_' + str(week)),
-                query.get_team_roster_player_stats_by_week,
-                {
-                    'team_id': str(team2.team_id),
-                    'chosen_week': week
-                }
-            )
-
-            # Take out bench players to streamline the char count
-            sortedPlayers1 = list(player for player in players1 if (player['player'].selected_position.position != 'BN' and player['player'].selected_position.position != 'IR'))
-            sortedPlayers2 = list(player for player in players2 if (player['player'].selected_position.position != 'BN' and player['player'].selected_position.position != 'IR'))
-
-            # Write out player scoring by position (bench omitted for brevity)
-            smallerPlayerCount = len(sortedPlayers1) if len(sortedPlayers1) < len(sortedPlayers2) else len(sortedPlayers2)
-            for i in range(smallerPlayerCount):
-                player1: Player = sortedPlayers1[i]['player']
-                player2: Player = sortedPlayers2[i]['player']
-                name1 = ('' + player1.first_name[:1] + '. ' + player1.last_name) if player1.last_name is not None else player1.full_name
-                name2 = ('' + player2.first_name[:1] + '. ' + player2.last_name) if player2.last_name is not None else player2.full_name
-                points1 = '0.0' if player1.player_points.total is None else player1.player_points.total
-                points2 = '0.0' if player2.player_points.total is None else player2.player_points.total
-                position = 'FLX' if player1.selected_position.position == 'W/R/T' else player1.selected_position.position
-                number1 = ('#' + str(player1.uniform_number).ljust(3, ' ')) if (player1.uniform_number is not False and player1.uniform_number is not None) else '     '
-                number2 = (' #' + str(player2.uniform_number).ljust(3, ' ')) if (player2.uniform_number is not False and player2.uniform_number is not None) else '     '
-                teamcode1 = player1.editorial_team_abbr.ljust(4, ' ')
-                teamcode2 = player2.editorial_team_abbr.rjust(3, ' ')
-                output += '' + teamcode1 + number1 + name1[:15].ljust(15, ' ') + str(points1).rjust(5, ' ') + ' '
-                output += position.ljust(3, ' ') + ' ' + str(points2).ljust(5, ' ') + name2[:15].rjust(15, ' ') + number2 + teamcode2 + '\n'
-            
-            # Totals line /w total prediction
-            output += '(Proj) Total ' + ('(' + str(team1.team_projected_points.total) + ') ' + str(team1.team_points.total)).rjust(17, ' ') + ' TOT '
-            output += ('' + str(team2.team_points.total) + ' (' + str(team2.team_projected_points.total) + ')').ljust(17, ' ') + ' Total (Proj)'
-
-            messages[count] = (output + '```')
-            
-
         # Write each matchup in parallel to be sent in series later
         threads = [None] * 6
         messages = [None] * 6
         with ThreadPoolExecutor(max_workers=6) as executor:
             for index, matchupObj in enumerate(scoreboard.matchups): 
                 print('starting thread ' + str(index))
-                threads[index] = executor.submit(do_matchup, index, messages, matchupObj['matchup'])
+                threads[index] = executor.submit(self.do_matchup, index, messages, matchupObj['matchup'], query, week)
 
             # Wait for threads to stop
             wait(threads)
         
-        await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, exposition.author)
+
+        # Create discord thread for all these messages
+        scoreThread = await ctx.message.create_thread(name='Week ' + str(week) + ' Scoreboard')
 
         msg: list(discord.Message) = []
         carryover = ''
         for index, text in enumerate(messages):
             if (index % 2 == 0): carryover = text
-            else: msg.append(await ctx.send(carryover + text))
+            else: msg.append(await scoreThread.send(carryover + text))
         
-        await exposition.delete()
+        await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg[0].author)
+
+    @ff.command(name='matchups')
+    async def matchups(self, ctx, week: int = 0):
+        """
+        Displays the team names for each matchup. Use to find specific matchup IDs without waiting for the scoreboard. 
+        """
+        if (week > 16):
+            await ctx.send('`Week` parameter is out of bounds. Try something less than 17.')
+            return
+
+        await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
+
+        #query = YahooQuery('data/', self.config['league_id'])
+        query = YahooQuery('data/', league_id='950358', game_id=406)
+        league: League = self.controller.retrieve(
+            'league_metadata', 
+            query.get_league_metadata
+        )
+
+        if week == 0: week = int(league.current_week)
+        scoreboard: Scoreboard = self.controller.retrieve(
+            'league_scoreboard_week_' + str(week), 
+            query.get_league_scoreboard_by_week, 
+            {'chosen_week': week}
+        )
+
+            
+        output = 'Week ' + str(week) + ':```'
+        for index, matchupObj in enumerate(scoreboard.matchups, start=1):
+            matchup: Matchup = matchupObj['matchup']
+
+            team1: Team = matchup.teams[0]['team']
+            team2: Team = matchup.teams[1]['team']
+            manager1: str = ' (' + team1.managers['manager'].nickname + ')'
+            manager2: str = ' (' + team2.managers['manager'].nickname + ')'
+            output += 'Matchup ' + str(index) + ': ' + (str(team1.name, 'UTF-8') + manager1)[:25].rjust(25, ' ') + ' vs. ' + (str(team2.name, 'UTF-8') + manager2)[:25].ljust(25, ' ') + '\n'
+
+        msg = await ctx.send(output + '```')
         
+        await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
+
+
     @ff.command(name='matchup')
     @enforce_user_registered()
     async def matchup(self, ctx, matchup: int = 0):
