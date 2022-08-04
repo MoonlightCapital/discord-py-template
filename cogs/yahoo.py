@@ -1,6 +1,10 @@
 from struct import unpack
+from time import sleep
 import nextcord as discord
 import json
+import datetime
+from threading import Thread
+from concurrent.futures import ThreadPoolExecutor, wait
 from nextcord.ext import commands
 from internal import constants
 from yfpy.data import Data
@@ -206,24 +210,20 @@ class Yahoo(commands.Cog):
         )
 
         if week == 0: week = int(league.current_week)
-
         scoreboard: Scoreboard = self.controller.retrieve(
             'league_scoreboard_week_' + str(week), 
             query.get_league_scoreboard_by_week, 
             {'chosen_week': week}
         )
 
-        # Write out each matchup
-        count = 0
-        messages = []
-        for matchupObj in scoreboard.matchups:
-            count += 1
-            output = '```Week ' + str(week) + ' Matchup ' + str(count) + ':\n'
+        def do_matchup(count, messages, matchup: Matchup):
+            output = '```Week ' + str(week) + ' Matchup ' + str(count + 1) + ':\n'
 
-            matchup: Matchup = matchupObj['matchup']
             team1: Team = matchup.teams[0]['team']
             team2: Team = matchup.teams[1]['team']
-            output += '' + str(team1.name, 'UTF-8')[:20].rjust(20, ' ') + ' vs. ' + str(team2.name, 'UTF-8')[:20].ljust(20, ' ') + '\n'
+            manager1: str = ' (' + team1.managers['manager'].nickname + ')'
+            manager2: str = ' (' + team2.managers['manager'].nickname + ')'
+            output += '' + (str(team1.name, 'UTF-8') + manager1)[:30].rjust(30, ' ') + ' vs. ' + (str(team2.name, 'UTF-8') + manager2)[:30].ljust(30, ' ') + '\n'
 
             players1 = self.controller.retrieve(
                 ('team_' + str(team1.team_id) + 'roster_player_stats_by_week_' + str(week)),
@@ -257,20 +257,38 @@ class Yahoo(commands.Cog):
                 points1 = '0.0' if player1.player_points.total is None else player1.player_points.total
                 points2 = '0.0' if player2.player_points.total is None else player2.player_points.total
                 position = 'FLX' if player1.selected_position.position == 'W/R/T' else player1.selected_position.position
-                output += '' + name1[:15].ljust(15, ' ') + str(points1).rjust(5, ' ') + ' ' + position.ljust(3, ' ') + ' ' + str(points2).ljust(5, ' ') + name2[:15].rjust(15, ' ') + '\n'
+                number1 = ('#' + str(player1.uniform_number).ljust(3, ' ')) if (player1.uniform_number is not False and player1.uniform_number is not None) else '     '
+                number2 = (' #' + str(player2.uniform_number).ljust(3, ' ')) if (player2.uniform_number is not False and player2.uniform_number is not None) else '     '
+                teamcode1 = player1.editorial_team_abbr.ljust(4, ' ')
+                teamcode2 = player2.editorial_team_abbr.rjust(3, ' ')
+                output += '' + teamcode1 + number1 + name1[:15].ljust(15, ' ') + str(points1).rjust(5, ' ') + ' '
+                output += position.ljust(3, ' ') + ' ' + str(points2).ljust(5, ' ') + name2[:15].rjust(15, ' ') + number2 + teamcode2 + '\n'
             
             # Totals line /w total prediction
-            output += 'Proj ' + ('(' + str(team1.team_projected_points.total) + ') ' + str(team1.team_points.total)).rjust(15, ' ') + ' TOT '
-            output += ('' + str(team2.team_points.total) + ' (' + str(team2.team_projected_points.total) + ')').ljust(15, ' ') + ' Proj'
+            output += '(Proj) Total ' + ('(' + str(team1.team_projected_points.total) + ') ' + str(team1.team_points.total)).rjust(17, ' ') + ' TOT '
+            output += ('' + str(team2.team_points.total) + ' (' + str(team2.team_projected_points.total) + ')').ljust(17, ' ') + ' Total (Proj)'
 
-            print(len(output))
-            messages.append(output + '```')
+            messages[count] = (output + '```')
+            
+
+        # Write each matchup in parallel to be sent in series later
+        threads = [None] * 6
+        messages = [None] * 6
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            for index, matchupObj in enumerate(scoreboard.matchups): 
+                print('starting thread ' + str(index))
+                threads[index] = executor.submit(do_matchup, index, messages, matchupObj['matchup'])
+
+            # Wait for threads to stop
+            wait(threads)
         
         await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, exposition.author)
-        
+
         msg: list(discord.Message) = []
-        for text in messages:
-            msg.append(await ctx.send(text))
+        carryover = ''
+        for index, text in enumerate(messages):
+            if (index % 2 == 0): carryover = text
+            else: msg.append(await ctx.send(carryover + text))
         
         await exposition.delete()
         
@@ -280,7 +298,43 @@ class Yahoo(commands.Cog):
         """
         Display the current matchup for your fantasy team. Optional matchup ID parameter for viewing other matchups - requires getting the ID from the scoreboard output.
         """
-        pass
+        # get commanding user's matchup if needed
+        if matchup == 0:
+            existing_entry = await self.find_user(str(ctx.author.id))
+        
+        prequery = str(datetime.datetime.now())
+        query = YahooQuery('data/', league_id='950358', game_id=406)
+        league: League = self.controller.retrieve(
+            'league_metadata', 
+            query.get_league_metadata
+        )
+        postquery1 = str(datetime.datetime.now())
+
+        week = 3
+        if week == 0: week = int(league.current_week)
+
+        teammatchups = self.controller.retrieve(
+            'team' + str(matchup) + '_matchups', 
+            query.get_team_matchups, 
+            {'team_id': 2}
+        )
+        print('Pre-Query: ' + prequery)
+        print('Post-Query 1: ' + postquery1)
+        print('Post-Query 2: ' + str(datetime.datetime.now()))
+        await ctx.send('test')
+        print('Post-Msg 1: ' + str(datetime.datetime.now()))
+        await ctx.send('test')
+        print('Post-Msg 2: ' + str(datetime.datetime.now()))
+        await ctx.send('test')
+        print('Post-Msg 3: ' + str(datetime.datetime.now()))
+        await ctx.send('test')
+        print('Post-Msg 4: ' + str(datetime.datetime.now()))
+        await ctx.send('test')
+        print('Post-Msg 5: ' + str(datetime.datetime.now()))
+        await ctx.send('test')
+        print('Post-Msg 6: ' + str(datetime.datetime.now()))
+        # get_league_matchups_by_week
+        # get_team_roster_by_week x2
         
     @ff.command(name='team')
     @enforce_user_registered()
@@ -288,6 +342,7 @@ class Yahoo(commands.Cog):
         """
         Display the current matchup for your fantasy team. Optional team ID parameter for viewing other matchups - requires getting the ID from the teaminfo output.
         """
+        # get_team_roster_by_week
         pass
         
     @ff.command(name='gameday')
