@@ -4,7 +4,7 @@ from time import sleep
 import nextcord as discord
 import json
 import datetime
-from typing import Optional
+from typing import Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, wait
 from nextcord.ext import commands
 from internal import constants
@@ -56,6 +56,116 @@ class Yahoo(commands.Cog):
         await new_entry.commit()
         return True
 
+    def getYahooQueryObject(self):
+        #return YahooQuery('data/', self.config['league_id'])
+        return YahooQuery('data/', league_id='950358', game_id=406)
+
+    def getIntCurrentWeek(self):
+        query = self.getYahooQueryObject()
+        league: League = self.controller.retrieve(
+            'league_metadata', 
+            query.get_league_metadata
+        )
+        return int(league.current_week)
+
+    def getLeagueTeamCount(self):
+        query = self.getYahooQueryObject()
+        league: League = self.controller.retrieve(
+            'league_metadata', 
+            query.get_league_metadata
+        )
+        return int(league.num_teams)
+
+    def getLeagueInfo(self):
+        query = self.getYahooQueryObject()
+        return self.controller.retrieve(
+            'league_info', 
+            query.get_league_info
+        )
+
+    def getScoreboard(self, week):
+        query = self.getYahooQueryObject()
+        return self.controller.retrieve(
+            'league_scoreboard_week_' + str(week), 
+            query.get_league_scoreboard_by_week, 
+            {'chosen_week': week}
+        )
+
+    def getStandings(self):
+        query = self.getYahooQueryObject()
+        return self.controller.retrieve(
+            'league_standings', 
+            query.get_league_standings
+        )
+
+    def getTeams(self):
+        query = self.getYahooQueryObject()
+        return self.controller.retrieve(
+            'league_teams', 
+            query.get_league_teams
+        )
+
+    def getTeam(self, teamid):
+        query = self.getYahooQueryObject()
+        teams = self.controller.retrieve(
+            'league_teams', 
+            query.get_league_teams
+        )
+        for team in teams:
+            if team['team'].team_id == teamid: return team
+        return None
+
+    def getTeamPlayerStats(self, teamId: int, week: int):
+        query = self.getYahooQueryObject()
+        return self.controller.retrieve(
+            ('team_' + str(teamId) + 'roster_player_stats_by_week_' + str(week)),
+            query.get_team_roster_player_stats_by_week,
+            {
+                'team_id': str(teamId),
+                'chosen_week': week
+            }
+        )
+
+    async def validateWeekArg(self, ctx, week):
+        if (week > 16):
+            await ctx.send('`Week` parameter is out of bounds. Try something less than 17.')
+            return (False, week)
+        week = self.getIntCurrentWeek() if week == 0 else week
+        return (True, week)
+    
+    async def validateMatchupArg(self, ctx, scoreboard: Scoreboard, matchup: int):
+        userTeam = 0
+        if matchup == 0:
+            existing_entry = await self.find_user(str(ctx.author.id))
+            userTeam = existing_entry['team']
+        elif matchup >= len(scoreboard.matchups):
+            await ctx.send('`matchup` parameter is out of bounds. This league/week only has ' + str(len(scoreboard.matchups)) + ' matchups.')
+            return (False, matchup)
+        else: 
+            return (True, matchup)
+            
+        # Find matchup number if the user did not provide a number, assuming they are checked to be registered by decorator
+        for index, matchupObj in enumerate(scoreboard.matchups):
+            if (matchupObj['matchup'].teams[0]['team'].team_id == userTeam or matchupObj['matchup'].teams[1]['team'].team_id == userTeam):
+                matchup = (index + 1) 
+                break
+        return (True, matchup)
+
+    async def validateTeamArg(self, ctx, teamId):
+        teams = self.getTeams()
+
+        # Find team number if the user did not provide a number, assuming they are checked to be registered by decorator
+        existing_entry = await self.find_user(str(ctx.author.id))
+        if existing_entry is not None: teamId = existing_entry['team']
+
+        if (teamId != 0):
+            for team in teams:
+                if int(team['team'].team_id) == teamId:
+                    return (True, team['team'])
+
+        await ctx.send('`teamid` parameter is out of bounds. This league only has ' + str(len(teams)) + ' teams, and `' + str(teamId) + '` is not one of them.')
+        return (False, None)
+
     # Sorts through playerNames list an assigns them in an alternating fashion to team1 and team2 projections
     def get_all_player_projections(self, playerNames, week):
 
@@ -88,7 +198,7 @@ class Yahoo(commands.Cog):
 
         return team1Projections, team2Projections
 
-    def do_matchup(self, count, matchup: Matchup, query: YahooQuery, week: int, messages = None):
+    def do_matchup(self, count, matchup: Matchup, week: int, messages = None):
         output = '```Week ' + str(week) + ' Matchup ' + str(count + 1) + ':\n'
 
         team1: Team = matchup.teams[0]['team']
@@ -97,33 +207,20 @@ class Yahoo(commands.Cog):
         manager2: str = ' (' + team2.managers['manager'].nickname + ')'
         output += '' + (str(team1.name, 'UTF-8') + manager1)[:35].rjust(35, ' ') + ' vs. ' + (str(team2.name, 'UTF-8') + manager2)[:35].ljust(35, ' ') + '\n'
 
-        players1 = self.controller.retrieve(
-            ('team_' + str(team1.team_id) + 'roster_player_stats_by_week_' + str(week)),
-            query.get_team_roster_player_stats_by_week,
-            {
-                'team_id': str(team1.team_id),
-                'chosen_week': week
-            }
-        )
-        
-        players2 = self.controller.retrieve(
-            ('team_' + str(team2.team_id) + 'roster_player_stats_by_week_' + str(week)),
-            query.get_team_roster_player_stats_by_week,
-            {
-                'team_id': str(team2.team_id),
-                'chosen_week': week
-            }
-        )
+        players1 = self.getTeamPlayerStats(team1.team_id, week)
+        players2 = self.getTeamPlayerStats(team2.team_id, week)
 
         # Take out bench players to streamline the char count
         sortedPlayers1 = list(
             player for player in players1 if (
-                player['player'].selected_position.position != 'BN' and player['player'].selected_position.position != 'IR'
+                player['player'].selected_position.position != 'BN' and 
+                player['player'].selected_position.position != 'IR'
                 )
             )
         sortedPlayers2 = list(
             player for player in players2 if (
-                player['player'].selected_position.position != 'BN' and player['player'].selected_position.position != 'IR'
+                player['player'].selected_position.position != 'BN' and 
+                player['player'].selected_position.position != 'IR'
                 )
             )
         
@@ -208,11 +305,7 @@ class Yahoo(commands.Cog):
         Register a team in the league to yourself. This facilitates other commands such as `wb ff team` to show you your own team by default.
         """
         # Pull team ID info
-        query = YahooQuery('data/', self.config['league_id'])
-        leagueTeams = self.controller.retrieve(
-            'league_teams', 
-            query.get_league_teams
-        )
+        leagueTeams = self.getTeams()
 
         # Stop if teamNo is bad
         if (teamNo < 0 or teamNo > len(leagueTeams)):
@@ -252,17 +345,8 @@ class Yahoo(commands.Cog):
         """
         print('Fetching fantasy league info...\n')
 
-        query = YahooQuery('data/', self.config['league_id'])
-
-        leagueInfo: League = self.controller.retrieve(
-            'league_info', 
-            query.get_league_info
-        )
-
-        leagueTeams = self.controller.retrieve(
-            'league_teams', 
-            query.get_league_teams
-        )
+        leagueInfo = self.getLeagueInfo()
+        leagueTeams = self.getTeams()
 
         output = 'League info acquired for: ' + leagueInfo.name + '\n```'
         output += 'Id | Team Name              | Manager(s)\n'
@@ -282,11 +366,7 @@ class Yahoo(commands.Cog):
         """
         Display the current standings page for the fantasy league.
         """
-        query = YahooQuery('data/', self.config['league_id'])
-        standings: Standings = self.controller.retrieve(
-            'league_standings', 
-            query.get_league_standings
-        )
+        standings: Standings = self.getStandings()
 
         output = 'Current Standings:```Rank | ' + 'Team Name'.ljust(int(self.config['max_team_name_length']), ' ') + ' |  W-L-T    | Pts For | Pts Agnst | Streak | Waiver | Moves\n'
         for teamObj in standings.teams:
@@ -295,8 +375,8 @@ class Yahoo(commands.Cog):
             name = ' ' + str(team.name, 'UTF-8').ljust(int(self.config['max_team_name_length']), ' ') + ' |'
             wlt = ' ' + str(team.wins).rjust(2, ' ') + ('-' + str(team.losses) + '-' + str(team.ties)).ljust(7, ' ') + ' |'
             ptsFor = ' ' + str(round(team.points_for, 2)).rjust(6, ' ').ljust(7, '0') + ' |'
-            ptsAgnst = ' ' + str(round(team.points_against, 2)).rjust(8, ' ').ljust(9, '0') + ' |'
-            streak = ' ' + (' ' if team.streak_type == '' else team.streak_type) + ' - ' + str(team.streak_length).rjust(2, ' ') + ' |'
+            ptsAgnst = ' ' + str(round(team.points_against, 2)).rjust(9, ' ') + ' |'
+            streak = ' ' + (' ' if team.streak_type == '' else team.streak_type[:1].upper()) + ' - ' + str(team.streak_length).rjust(2, ' ') + ' |'
             waiver = ' ' + ('0' if team.waiver_priority is None else str(team.waiver_priority)).rjust(6, ' ') + ' |'
             moves = ' ' + ('0' if team.number_of_moves is None else str(team.number_of_moves)).rjust(5, ' ')
             output += rank + name + wlt + ptsFor + ptsAgnst + streak + waiver + moves + '\n'
@@ -310,33 +390,20 @@ class Yahoo(commands.Cog):
         """
         Display the current scoreboard for the fantasy league. Optional week parameter for retrospective/lookahead.
         """
-        if (week > 16):
-            await ctx.send('`week` parameter is out of bounds. Try something less than 17.')
-            return
+        valid, week = await self.validateWeekArg(ctx, week)
+        if (not valid): return
 
         await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
 
-        #query = YahooQuery('data/', self.config['league_id'])
-        query = YahooQuery('data/', league_id='950358', game_id=406)
-        league: League = self.controller.retrieve(
-            'league_metadata', 
-            query.get_league_metadata
-        )
-
-        if week == 0: week = int(league.current_week)
-        scoreboard: Scoreboard = self.controller.retrieve(
-            'league_scoreboard_week_' + str(week), 
-            query.get_league_scoreboard_by_week, 
-            {'chosen_week': week}
-        )
+        scoreboard: Scoreboard = self.getScoreboard(week)
 
         # Write each matchup in parallel to be sent in series later
-        threads = [None] * int(league.num_teams / 2)
-        messages = [None] * int(league.num_teams / 2)
-        with ThreadPoolExecutor(max_workers=(league.num_teams / 2)) as executor:
+        threads = [None] * len(scoreboard.matchups)
+        messages = [None] * len(scoreboard.matchups)
+        with ThreadPoolExecutor(max_workers=len(scoreboard.matchups)) as executor:
             for index, matchupObj in enumerate(scoreboard.matchups): 
                 print('starting thread ' + str(index))
-                threads[index] = executor.submit(self.do_matchup, index, matchupObj['matchup'], query, week, messages)
+                threads[index] = executor.submit(self.do_matchup, index, matchupObj['matchup'], week, messages)
 
             # Wait for threads to stop
             wait(threads)
@@ -358,26 +425,11 @@ class Yahoo(commands.Cog):
         """
         Displays the team names for each matchup. Use to find specific matchup IDs without waiting for the scoreboard. 
         """
-        if (week > 16):
-            await ctx.send('`Week` parameter is out of bounds. Try something less than 17.')
-            return
-
+        valid, week = await self.validateWeekArg(ctx, week)
+        if (not valid): return
         await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
 
-        #query = YahooQuery('data/', self.config['league_id'])
-        query = YahooQuery('data/', league_id='950358', game_id=406)
-        league: League = self.controller.retrieve(
-            'league_metadata', 
-            query.get_league_metadata
-        )
-
-        if week == 0: week = int(league.current_week)
-        scoreboard: Scoreboard = self.controller.retrieve(
-            'league_scoreboard_week_' + str(week), 
-            query.get_league_scoreboard_by_week, 
-            {'chosen_week': week}
-        )
-
+        scoreboard: Scoreboard = self.getScoreboard(week)
             
         output = 'Week ' + str(week) + ':```'
         for index, matchupObj in enumerate(scoreboard.matchups, start=1):
@@ -393,7 +445,6 @@ class Yahoo(commands.Cog):
         
         await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
 
-
     @ff.command(name='matchup')
     @enforce_user_registered()
     async def matchup(self, ctx, matchup: Optional[int] = 0, week: Optional[int] = 0):
@@ -401,57 +452,34 @@ class Yahoo(commands.Cog):
         Display the current matchup for your fantasy team. Optional matchup ID parameter for viewing other matchups - requires getting the ID from the scoreboard output.
         Further optional week parameter for specific matchups in specific weeks
         """
-        #query = YahooQuery('data/', self.config['league_id'])
-        query = YahooQuery('data/', league_id='950358', game_id=406)
-        league: League = self.controller.retrieve(
-            'league_metadata', 
-            query.get_league_metadata
-        )
+        valid, week = await self.validateWeekArg(ctx, week)
+        if (not valid): return
 
-        if (week > 16):
-            await ctx.send('`week` parameter is out of bounds. Try something less than 17.')
-            return
+        scoreboard = self.getScoreboard(week)
+        valid, matchup = await self.validateMatchupArg(ctx, scoreboard, matchup)
+        if (not valid): return
 
         await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
-        
-        if week == 0: week = int(league.current_week)
-        scoreboard: Scoreboard = self.controller.retrieve(
-            'league_scoreboard_week_' + str(week), 
-            query.get_league_scoreboard_by_week, 
-            {'chosen_week': week}
-        )
-        
-        # get commanding user's matchup if needed
-        userTeam = 0
-        if matchup == 0:
-            existing_entry = await self.find_user(str(ctx.author.id))
-            userTeam = existing_entry['team']
-        elif matchup >= len(scoreboard.matchups):
-            await ctx.send('`matchup` parameter is out of bounds. This league/week only has ' + str(len(scoreboard.matchups)) + ' matchups.')
-            return
 
-        # Find matchup number if the user is registerd and did not provide a number
-        if userTeam != 0:
-            for index, matchupObj in enumerate(scoreboard.matchups):
-                if (matchupObj['matchup'].teams[0]['team'].team_id == userTeam or matchupObj['matchup'].teams[1]['team'].team_id == userTeam):
-                    matchup = (index + 1) 
-                    break
-
-        # Write each matchup in parallel to be sent in series later
-        output = self.do_matchup(matchup-1, scoreboard.matchups[matchup-1]['matchup'], query, week)
+        # write matchup with the same code that writes the scoreboard, then send to discord non-threaded
+        output = self.do_matchup(matchup-1, scoreboard.matchups[matchup-1]['matchup'], week)
         msg = await ctx.send(output)
-        await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
-        
-        
+        await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author) 
         
     @ff.command(name='team')
     @enforce_user_registered()
-    async def team(self, ctx, teamId: int = 0):
+    async def team(self, ctx, teamId: Optional[int] = 0, week: Optional[int] = 0):
         """
         Display the current matchup for your fantasy team. Optional team ID parameter for viewing other matchups - requires getting the ID from the teaminfo output.
         """
-        # get_team_roster_by_week
-        pass
+        valid, team = await self.validateTeamArg(ctx, teamId)
+        if (not valid): return
+
+        valid, week = await self.validateWeekArg(ctx, week)
+        if (not valid): return
+
+        players = self.getTeamPlayerStats(team.team_id, week)
+        # output these players in an all new formatted code-block table
         
     @ff.command(name='gameday')
     @enforce_user_registered()
