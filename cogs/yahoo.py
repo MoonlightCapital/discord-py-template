@@ -4,7 +4,7 @@ from time import sleep
 import nextcord as discord
 import json
 import datetime
-from threading import Thread
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, wait
 from nextcord.ext import commands
 from internal import constants
@@ -88,7 +88,7 @@ class Yahoo(commands.Cog):
 
         return team1Projections, team2Projections
 
-    def do_matchup(self, count, messages, matchup: Matchup, query: YahooQuery, week: int):
+    def do_matchup(self, count, matchup: Matchup, query: YahooQuery, week: int, messages = None):
         output = '```Week ' + str(week) + ' Matchup ' + str(count + 1) + ':\n'
 
         team1: Team = matchup.teams[0]['team']
@@ -158,9 +158,10 @@ class Yahoo(commands.Cog):
         
         # Totals line /w total prediction
         output += '(Proj)  Total ' + ('(' + str(team1.team_projected_points.total) + ') ' + str(team1.team_points.total)).rjust(21, ' ') + ' TOT '
-        output += ('' + str(team2.team_points.total) + ' (' + str(team2.team_projected_points.total) + ')').ljust(21, ' ') + ' Total  (Proj)'
+        output += ('' + str(team2.team_points.total) + ' (' + str(team2.team_projected_points.total) + ')').ljust(21, ' ') + ' Total  (Proj)```'
 
-        messages[count] = (output + '```')
+        if messages is not None: messages[count] = (output)
+        return output
 
     def enforce_sports_channel():
         async def predicate(ctx):
@@ -310,7 +311,7 @@ class Yahoo(commands.Cog):
         Display the current scoreboard for the fantasy league. Optional week parameter for retrospective/lookahead.
         """
         if (week > 16):
-            await ctx.send('`Week` parameter is out of bounds. Try something less than 17.')
+            await ctx.send('`week` parameter is out of bounds. Try something less than 17.')
             return
 
         await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
@@ -330,12 +331,12 @@ class Yahoo(commands.Cog):
         )
 
         # Write each matchup in parallel to be sent in series later
-        threads = [None] * 6
-        messages = [None] * 6
-        with ThreadPoolExecutor(max_workers=6) as executor:
+        threads = [None] * int(league.num_teams / 2)
+        messages = [None] * int(league.num_teams / 2)
+        with ThreadPoolExecutor(max_workers=(league.num_teams / 2)) as executor:
             for index, matchupObj in enumerate(scoreboard.matchups): 
                 print('starting thread ' + str(index))
-                threads[index] = executor.submit(self.do_matchup, index, messages, matchupObj['matchup'], query, week)
+                threads[index] = executor.submit(self.do_matchup, index, matchupObj['matchup'], query, week, messages)
 
             # Wait for threads to stop
             wait(threads)
@@ -395,16 +396,53 @@ class Yahoo(commands.Cog):
 
     @ff.command(name='matchup')
     @enforce_user_registered()
-    async def matchup(self, ctx, matchup: int = 0):
+    async def matchup(self, ctx, matchup: Optional[int] = 0, week: Optional[int] = 0):
         """
         Display the current matchup for your fantasy team. Optional matchup ID parameter for viewing other matchups - requires getting the ID from the scoreboard output.
+        Further optional week parameter for specific matchups in specific weeks
         """
+        #query = YahooQuery('data/', self.config['league_id'])
+        query = YahooQuery('data/', league_id='950358', game_id=406)
+        league: League = self.controller.retrieve(
+            'league_metadata', 
+            query.get_league_metadata
+        )
+
+        if (week > 16):
+            await ctx.send('`week` parameter is out of bounds. Try something less than 17.')
+            return
+
+        await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
+        
+        if week == 0: week = int(league.current_week)
+        scoreboard: Scoreboard = self.controller.retrieve(
+            'league_scoreboard_week_' + str(week), 
+            query.get_league_scoreboard_by_week, 
+            {'chosen_week': week}
+        )
+        
         # get commanding user's matchup if needed
+        userTeam = 0
         if matchup == 0:
             existing_entry = await self.find_user(str(ctx.author.id))
+            userTeam = existing_entry['team']
+        elif matchup >= len(scoreboard.matchups):
+            await ctx.send('`matchup` parameter is out of bounds. This league/week only has ' + str(len(scoreboard.matchups)) + ' matchups.')
+            return
+
+        # Find matchup number if the user is registerd and did not provide a number
+        if userTeam != 0:
+            for index, matchupObj in enumerate(scoreboard.matchups):
+                if (matchupObj['matchup'].teams[0]['team'].team_id == userTeam or matchupObj['matchup'].teams[1]['team'].team_id == userTeam):
+                    matchup = (index + 1) 
+                    break
+
+        # Write each matchup in parallel to be sent in series later
+        output = self.do_matchup(matchup-1, scoreboard.matchups[matchup-1]['matchup'], query, week)
+        msg = await ctx.send(output)
+        await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
         
-        # get_league_matchups_by_week
-        # get_team_roster_by_week x2
+        
         
     @ff.command(name='team')
     @enforce_user_registered()
