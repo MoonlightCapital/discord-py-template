@@ -26,10 +26,13 @@ class Archive(commands.Cog):
 
         return textFilePath
 
-    @commands.command(name='archive-all')
+    @commands.group(name='archive')
+    async def base_archive(self, ctx): pass
+
+    @base_archive.command(name='all')
     @commands.bot_has_permissions(read_message_history=True)
     @commands.is_owner()
-    async def archive_all(self, ctx):
+    async def all(self, ctx):
         """
         Records entire history of this channel onto the bot's storage. All images are downloaded and the text log is saved.
         """
@@ -62,7 +65,7 @@ class Archive(commands.Cog):
         msg = await ctx.send('This channel has been saved!')
         await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
 
-    @commands.command()
+    @base_archive.command(name='')
     @commands.bot_has_permissions(read_message_history=True)
     @commands.is_owner()
     async def archive(self, ctx):
