@@ -15,15 +15,19 @@ class Moderate(commands.Cog):
         else:
             print('Could not reprimand offender, self.bot.get_cog(\'Reprimand\' is None.')
             
-    @commands.Cog.listener("on_message")
-    async def check_for_links(self, message):
-        """
-        This event checks every top-level message received in #babe-wake-up to make sure it has a link.
-        """
+    @commands.group(name='mod')
+    async def base_mod(self, message):
         if message.author.bot: return  # ignore all bots
         if message.channel.name != 'babe-wake-up': # ignore messages that aren't top-level and in babe-wake-up
             print('Moderate.py: Wrong channel, skipping message listener...\n')
             return
+
+
+    @base_mod.Cog.listener("on_message")
+    async def check_for_links(self, message):
+        """
+        This event checks every top-level message received in #babe-wake-up to make sure it has a link.
+        """
         if message.thread is not None: 
             print('Moderate.py: Thread created, skipping message listener...\n')
             return # ignore messages that create threads
@@ -39,16 +43,12 @@ class Moderate(commands.Cog):
             print('message has link as expected')
 
         
+    @base_mod.Cog.listener("on_message_delete")
     @commands.bot_has_permissions(read_message_history=True)
-    @commands.Cog.listener("on_message_delete")
     async def clean_up_channel(self, deletedMessage: discord.Message):
         """
         This event checks every deleted message in the media channel for replies from itself to remove / clean up. 
         """
-        if deletedMessage.author.bot: return  # ignore all bots
-        if deletedMessage.channel.name != 'babe-wake-up': # ignore messages that aren't top-level and in babe-wake-up
-            print('Moderate.py: Wrong channel, skipping message deleted listener...\n')
-            return
         
         # find the reply to the deleted message and clean it up
         async for message in deletedMessage.channel.history(limit=sys.maxsize, before=None, after=deletedMessage.created_at):
