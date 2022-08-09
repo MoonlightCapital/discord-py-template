@@ -22,8 +22,10 @@ class AutoReply(commands.Cog):
 
         await message.channel.send(user.display_name + ' is not currently available. They left this note:\n`' + reply['message'] + '`')
 
+    @commands.group(name='autoreply')
+    async def base_autoreply(self, ctx): pass
 
-    @commands.command()
+    @base_autoreply.command(name='')
     async def autoreply(self, ctx, *, message=''):
         """
         Sets up or modifies an autoreply message for the command author. If no message is supplied, instead deletes any existing autoreply for the author.
@@ -68,9 +70,9 @@ class AutoReply(commands.Cog):
             await ctx.send('Updated autoreply for `' + ctx.author.display_name + '`')
             print('Updated auto reply for ' + ctx.author.display_name)
 
-    @commands.command(name='autoreply-clear')
+    @base_autoreply.command(name='clear')
     @commands.is_owner()
-    async def autoreply_clear(self, ctx, user: discord.User):
+    async def clear(self, ctx, user: discord.User):
         """
         Admin: Clears a given user\'s autoreply setting. 
         """
@@ -86,9 +88,9 @@ class AutoReply(commands.Cog):
             print('Removed user \"' + user.display_name + '\'s\" autoreply setting.')
             await ctx.send('Removed autoreply setting for `' + user.display_name + '`')
 
-    @commands.command()
+    @base_autoreply.command(name='list')
     @commands.is_owner()
-    async def autoreplies(self, ctx):
+    async def list(self, ctx):
         """
         Admin: Prints autoreplies alphabetically by user, and in the case of >10 records, writes the whole lot to a text file and attaches.
         """

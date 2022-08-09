@@ -45,7 +45,10 @@ class Reprimand(commands.Cog):
 
         return response
 
-    @commands.command()
+    @commands.group(name='reprimand')
+    async def base_reprimand(self, ctx): pass
+
+    @base_reprimand.command(name='')
     async def reprimand(self, ctx, mandee: discord.User, *, reason=''):
         """
         Basic reprimand command, called with the name of the reprimandee. Record is made of the reprimand in the database.
@@ -53,8 +56,8 @@ class Reprimand(commands.Cog):
         confirmation = await self.process_reprimand(mandee, reason)
         msg = await ctx.send(confirmation)
 
-    @commands.command()
-    async def reprimands(self, ctx, mandee:discord.User=None):
+    @base_reprimand.command(name='list')
+    async def list(self, ctx, mandee:discord.User=None):
         """
         No User: Prints the top ten reprimandees, and in the case of a log >10 records, writes the whole log to a text file and attaches. 
 
@@ -120,9 +123,9 @@ class Reprimand(commands.Cog):
                 await ctx.send("Here is the full reprimand log:", file=discord.File(file, "result.txt"))
 
 
+    @base_reprimand.command(name='clear')
     @commands.is_owner()
-    @commands.command()
-    async def reprimand_clear(self, ctx, mandee: discord.User):
+    async def clear(self, ctx, mandee: discord.User):
         """
         Admin: Clears a given user from the reprimand log. 
         """
@@ -138,8 +141,6 @@ class Reprimand(commands.Cog):
             await existing_entry.delete()
             print('Removed user \"' + mandee.display_name + '\" from the log')
             await ctx.send('Removed user `' + mandee.display_name + '` from the log')
-
-
 
 def setup(bot):
     bot.add_cog(Reprimand(bot))

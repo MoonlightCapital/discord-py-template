@@ -21,9 +21,12 @@ class EmoteHistory(commands.Cog):
         output += '```'
         return output
 
-    @commands.command(name='tally-emotes')
+    @commands.group(aliases=['tally', 'emotehistory'])
+    async def base_tally(self, ctx): pass
+
+    @base_tally.command(name='emotes')
     @commands.bot_has_permissions(read_message_history=True)
-    async def tally_emotes(self, ctx, channel:discord.TextChannel, after, endRange=None):
+    async def emotes(self, ctx, channel:discord.TextChannel, after, endRange=None):
         """
         Counts custom emote usage for all messages in a given channel *after* a given date. Can limit the date range with an optional end date. Dates must be %m/%d/%y (say, 4-25-22)
         """
@@ -46,9 +49,9 @@ class EmoteHistory(commands.Cog):
         msg = await ctx.send(self.printDict(dict(sorted(emote_dict.items(), key=lambda x: x[1], reverse=True))))
         await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
     
-    @commands.command(name='tally-reactions')
+    @base_tally.command(name='reactions')
     @commands.bot_has_permissions(read_message_history=True)
-    async def tally_reactions(self, ctx, channel:discord.TextChannel, after, endRange=None):
+    async def reactions(self, ctx, channel:discord.TextChannel, after, endRange=None):
         """
         Counts custom emote usage as reactions for all messages in a given channel *after* a given date. Can limit the date range with an optional end date. Dates must be %m/%d/%y (say, 4-25-22)
         """
@@ -71,9 +74,9 @@ class EmoteHistory(commands.Cog):
         msg = await ctx.send(self.printDict(dict(sorted(emote_dict.items(), key=lambda x: x[1], reverse=True))))
         await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
     
-    @commands.command(name='tally-all')
+    @base_tally.command(name='all')
     @commands.bot_has_permissions(read_message_history=True)
-    async def tally_all(self, ctx, channel:discord.TextChannel, after, endRange=None):
+    async def all(self, ctx, channel:discord.TextChannel, after, endRange=None):
         """
         Sums custom emote usage and reactions for all messages in a given channel *after* a given date. Can limit the date range with an optional end date. Dates must be %m/%d/%y (say, 4-25-22)
         """
@@ -104,12 +107,12 @@ class EmoteHistory(commands.Cog):
         msg = await ctx.send(self.printDict(dict(sorted(emote_dict.items(), key=lambda x: x[1], reverse=True))))
         await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
         
-    @commands.command(name='tally-everything')
+    @base_tally.command(name='everything')
     @commands.bot_has_permissions(read_message_history=True)
     @commands.is_owner()
-    async def tally_everything(self, ctx, after, endRange=None):
+    async def everything(self, ctx, after, endRange=None):
         """
-        Sums all custom emote usage and reactions for all messages in all channels *after* a given date. Can limit the date range with an optional end date. Dates must be %m/%d/%y (say, 4-25-22)
+        Owner only. Sums all custom emote usage and reactions for all messages in all channels *after* a given date. Can limit the date range with an optional end date. Dates must be %m/%d/%y (say, 4-25-22)
         """
         
         await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
