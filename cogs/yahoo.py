@@ -66,8 +66,8 @@ class Yahoo(commands.Cog):
     def parseDataDate(self, olddate): # date comes in as yyyy-MM-ddThh:mmZ
         tz = pytz.timezone('America/New_York')
         time_string = olddate[11:16]
-        time = datetime.datetime.strptime(time_string, '%H:%M').time()
-        return str(datetime.datetime.now(pytz.utc).replace(hour=time.hour, minute=time.minute).astimezone(tz).strftime("%I:%M %p"))
+        utc_dt = pytz.utc.localize(datetime.datetime.strptime(time_string, '%H:%M')) - datetime.timedelta(minutes=4)
+        return str(utc_dt.astimezone(tz).strftime("%I:%M%p"))
 
     def getYahooQueryObject(self):
         return YahooQuery('data/', self.config[LEAGUE_ID], game_id=406)
@@ -213,15 +213,16 @@ class Yahoo(commands.Cog):
 
         # Find team number if the user did not provide a number, assuming they are checked to be registered by decorator
         existing_entry = await self.find_user(str(ctx.author.id))
-        if existing_entry is not None: teamId = existing_entry['team']
+        if (teamId < 0 or teamId > len(teams) or (existing_entry is None and teamId == 0)):
+            await ctx.send('`teamid` parameter is out of bounds. This league only has ' + str(len(teams)) + ' teams, and `' + str(teamId) + '` is not one of them.')
+            return (False, None)
 
-        if (teamId != 0):
-            for team in teams:
-                if int(team['team'].team_id) == teamId:
-                    return (True, team['team'])
+        if teamId == 0: teamId = existing_entry['team']
+        for team in teams:
+            if int(team['team'].team_id) == teamId:
+                return (True, team['team'])
 
-        await ctx.send('`teamid` parameter is out of bounds. This league only has ' + str(len(teams)) + ' teams, and `' + str(teamId) + '` is not one of them.')
-        return (False, None)
+
 
     def refresh_espn_player_list(self):
         self.espnLeague.player_map = {}
@@ -609,7 +610,7 @@ class Yahoo(commands.Cog):
         gameStates = self.getLiveGameStates(week)
 
         def findGameForPlayer(games: list, player: Player):
-            abbr = player.editorial_team_abbr
+            abbr = player.editorial_team_abbr.upper()
             opponent = ''
             for game in games:
                 if (game['team1'] == abbr): 
@@ -619,7 +620,7 @@ class Yahoo(commands.Cog):
                 else: continue
                 if 'tv' in game: # not yet played game
                     weekday = game['date'].split(', ')[0][:3]
-                    return (weekday + ' ' + game['time'] + opponent + ' on ' + game['tv'])
+                    return (weekday + ' ' + game['time'] + opponent + ' on ' + ('ABC' if game['tv'] is None else game['tv']))
                 else: # game is over or in progress
                     scores = game['score'].split(', ')
                     winnerPts = scores[0].split()[1]
