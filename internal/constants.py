@@ -18,3 +18,5 @@ POSITION_MAP = {
     'D/ST': 16,
     'K': 5,
 }
+
+YAHOO_FANTASY_LEAGUE_NAME = 'You Like That!'
