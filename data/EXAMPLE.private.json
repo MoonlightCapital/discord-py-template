@@ -1,4 +1,11 @@
 {
     "consumer_key": "YAHOO_DEVELOPER_APP_CONSUMER_KEY_STRING",
-    "consumer_secret": "YAHOO_DEVELOPER_APP_CONSUMER_SECRET_STRING"
+    "consumer_secret": "YAHOO_DEVELOPER_APP_CONSUMER_SECRET_STRING",
+    "espn_id": "ESPN_FANTASY_LEAGUE_ID",
+    "espn_swid": "{ESPN SWID from your browser cookies}",
+    "espn_s2": "ESPN s2 from your browser cookies (superlong string)",
+    "league_id": "YAHOO_FANTASY_LEAGUE_ID",
+    "old_game_id": "GAME_ID for old yahoo fantasy league (not required for current year)",
+    "timezone": "Look up a pytz timezone for the location of your bot server",
+    "year": "2022"
 }
