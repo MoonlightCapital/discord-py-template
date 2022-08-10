@@ -21,7 +21,7 @@ import requests
 
 from database.FantasyManagers import FantasyManagers
 
-LEAGUE_ID = 'old_league_id'
+LEAGUE_ID = 'league_id'
 
 class Yahoo(commands.Cog):
     def __init__(self, bot):
@@ -30,7 +30,7 @@ class Yahoo(commands.Cog):
     # Data.retrieve(filename, yf_query, params=None, data_type_class=None, new_data_dir=None)
     controller = Data('../yahoo', True)
 
-    # api id, secret, league_id, max_team_name_length
+    # api id, secret, league_id
     config = None
     with open('data/private.json') as f:
         config = json.load(f)
@@ -64,13 +64,14 @@ class Yahoo(commands.Cog):
         return True
 
     def parseDataDate(self, olddate): # date comes in as yyyy-MM-ddThh:mmZ
-        tz = pytz.timezone('America/New_York')
+        tz = pytz.timezone(self.config['timezone'])
         time_string = olddate[11:16]
         utc_dt = pytz.utc.localize(datetime.datetime.strptime(time_string, '%H:%M')) - datetime.timedelta(minutes=4)
         return str(utc_dt.astimezone(tz).strftime("%I:%M%p"))
 
     def getYahooQueryObject(self):
-        return YahooQuery('data/', self.config[LEAGUE_ID], game_id=406)
+        if (self.config['old_game_id'] is not None): return YahooQuery('data/', self.config[LEAGUE_ID], game_id=self.config['old_game_id'])
+        return YahooQuery('data/', self.config[LEAGUE_ID])
 
     def getIntCurrentWeek(self):
         query = self.getYahooQueryObject()
@@ -140,8 +141,9 @@ class Yahoo(commands.Cog):
 
     # returns list of dictionaries of current week's NFL game info
     # assume week arg validated
-    def getLiveGameStates(self, week: int = 0):
-        urlstr = "https://www.espn.com/nfl/schedule/_/seasontype/2" if week == 0 else f"https://www.espn.com/nfl/schedule/_/week/{str(week)}/seasontype/2"
+    def getLiveGameStates(self, week: int):
+        year = self.config['year']
+        urlstr = f"https://www.espn.com/nfl/schedule/_/week/{str(week)}/year/{str(year)}/seasontype/2"
         response = requests.get(urlstr)
         page = BeautifulSoup(response.content, 'html.parser')
         subpage = page.find(id='sched-container')
@@ -221,8 +223,6 @@ class Yahoo(commands.Cog):
         for team in teams:
             if int(team['team'].team_id) == teamId:
                 return (True, team['team'])
-
-
 
     def refresh_espn_player_list(self):
         self.espnLeague.player_map = {}
@@ -405,9 +405,6 @@ class Yahoo(commands.Cog):
         """
         print('Successful Yahoo FF test\n')
         msg = await ctx.send('Successful Yahoo FF test')
-
-        self.espnLeague._fetch_players()
-        print('Players Fetched!\n')
  
     @ff.command(name='register')
     async def register(self, ctx, teamNo: int):
@@ -547,8 +544,8 @@ class Yahoo(commands.Cog):
         await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
 
         scoreboard: Scoreboard = self.getScoreboard(week)
-            
-        output = 'Week ' + str(week) + ':```'
+        title = 'Week ' + str(week) + ' Matchups:'
+        output = ''
         for index, matchupObj in enumerate(scoreboard.matchups, start=1):
             matchup: Matchup = matchupObj['matchup']
 
@@ -556,9 +553,11 @@ class Yahoo(commands.Cog):
             team2: Team = matchup.teams[1]['team']
             manager1: str = ' (' + team1.managers['manager'].nickname + ')'
             manager2: str = ' (' + team2.managers['manager'].nickname + ')'
-            output += 'Matchup ' + str(index) + ': ' + (str(team1.name, 'UTF-8') + manager1)[:25].rjust(25, ' ') + ' vs. ' + (str(team2.name, 'UTF-8') + manager2)[:25].ljust(25, ' ') + '\n'
+            output += '' + str(index) + ': ' + (str(team1.name, 'UTF-8') + manager1)[:26].rjust(26, ' ') + ' vs. ' + (str(team2.name, 'UTF-8') + manager2)[:26].ljust(26, ' ') + '\n'
 
-        msg = await ctx.send(output + '```')
+        embed: discord.Embed = discord.Embed(color=0x99AAB5)
+        embed.add_field(name=title, value='```' + output + '```')
+        msg = await ctx.send(embed=embed)
         
         await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
 
@@ -603,7 +602,7 @@ class Yahoo(commands.Cog):
         players = self.getTeamPlayerStats(team.team_id, week)
         playerNames = []
         for player in players:
-            if (player['player'].selected_position.position == 'DEF'): playerNames.append((player['player'].editorial_team_full_name.split(' ')[-1] + ' D/ST_16'))
+            if (player['player'].primary_position == 'DEF'): playerNames.append((player['player'].editorial_team_full_name.split(' ')[-1] + ' D/ST_16'))
             else: playerNames.append(player['player'].full_name + '_' + str(constants.POSITION_MAP[player['player'].primary_position]))
         teamProjections = self.get_all_player_projections(playerNames, week)
 
@@ -620,30 +619,37 @@ class Yahoo(commands.Cog):
                 else: continue
                 if 'tv' in game: # not yet played game
                     weekday = game['date'].split(', ')[0][:3]
-                    return (weekday + ' ' + game['time'] + opponent + ' on ' + ('ABC' if game['tv'] is None else game['tv']))
+                    return (weekday + ' ' + game['time'] + opponent.ljust(6, ' ') + ' on ' + ('ABC' if game['tv'] is '' else game['tv']))
                 else: # game is over or in progress
                     scores = game['score'].split(', ')
                     winnerPts = scores[0].split()[1]
                     loserPts = scores[1].split()[1]
                     playerWon = True if scores[0].split()[0] == abbr else False
-                    return ('Final ' + ('W' if playerWon else 'L') + ' ' + winnerPts + '-' + loserPts + opponent)
+                    return ('Final ' + ('W' if playerWon else 'L') + ' ' + winnerPts + '-' + loserPts.ljust(2, ' ') + opponent)
             return 'Game Info Not Found'
 
-        embedName = 'Team ' + str(team.team_id) + ':'
-        embedValue = '   | ' + 'Player'.ljust(12, ' ') + ' | ' + 'Points'.ljust(13, ' ') + ' | Game\n'
+        embedTitle = 'Team ' + str(team.team_id) + ' (Week ' + str(week) + '):'
+        embedValues = ['   | ' + 'Info'.ljust(11, ' ') + '|' + 'Player'.ljust(10, ' ') + ' | ' + 'Pnts.'.ljust(6, ' ') + '| Game\n'] * 2
 
         # output these players in an all new formatted code-block table
         for i, playerObj in enumerate(players):
             player: Player = playerObj['player']
-            position = 'FLX' if player.selected_position.position == 'W/R/T' else player.selected_position.position
-            name = ('' + player.first_name[:1] + '. ' + player.last_name) if player.last_name is not None else player.full_name
-            points = ' 0.0 ' if player.player_points.total is None else ((' ' if player.player_points.total < 10.0 else '') + str(player.player_points.total)).ljust(5, ' ')
-            proj = ('(' + (str(teamProjections[i]) + (' ' if str(teamProjections[i])[-2] == '.' else '')).rjust(5, ' ') + ')')
+            embedIndex = 0
+            if (player.selected_position.position == 'BN' or player.selected_position.position == 'IR'): embedIndex = 1
+            selectedPosition = 'FLX' if player.selected_position.position == 'W/R/T' else player.selected_position.position
+            abbr = player.editorial_team_abbr.ljust(3, ' ')
+            number = ('#' + str(player.uniform_number) + '-').ljust(4, ' ') if (player.uniform_number is not False and player.uniform_number is not None) else '    '
+            primaryPosition = (player.primary_position).ljust(3, ' ')
+            name = ('' + player.first_name[:1] + '.' + player.last_name) if player.last_name is not None else player.full_name
+            points = ' 0.0 ' if player.player_points.total is None else ((' ' if player.player_points.total < 10.0 else '') + str(player.player_points.total))
+            proj = (str(teamProjections[i]) + (' ' if str(teamProjections[i])[-2] == '.' else ''))
+            if (points == ' 0.0 '): points = proj
             game = findGameForPlayer(gameStates, player)
-            embedValue += '' + position.ljust(3, ' ') + '| ' + name[:12].ljust(12, ' ') + ' | ' + proj + ' ' + points + ' | ' + game[:24] + '\n'
+            embedValues[embedIndex] += '' + selectedPosition.ljust(3, ' ') + '| ' + abbr + ' ' + number + primaryPosition + '|' + name[:10].ljust(10, ' ') + ' | ' + points.ljust(5, ' ') + ' | ' + game[:24] + '\n'
             
         embed = discord.Embed(color=0x99AAB5)
-        embed.add_field(name=embedName, value=('```' + embedValue + '```'), inline=False)
+        embed.add_field(name=embedTitle, value=('```' + embedValues[0] + '```'), inline=False)
+        embed.add_field(name='Bench', value=('```' + embedValues[1] + '```'), inline=False)
         msg = await ctx.send(embed=embed)
         await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author) 
 
