@@ -1,20 +1,15 @@
-from re import A
-from struct import unpack
-from time import sleep
 import nextcord as discord
 import json
 import datetime
 import pytz
 from typing import Optional
-from math import ceil
-from concurrent.futures import ThreadPoolExecutor
-from inspect import currentframe, getframeinfo
-from nextcord.ext import commands
+from pymongo import ASCENDING
+from nextcord.ext import tasks, commands
 from internal import constants
+from inspect import currentframe, getframeinfo
 from espn_api.football import League as EspnLeague, Player as EspnPlayer
 from yfpy.data import Data
 from yfpy.query import YahooFantasySportsQuery as YahooQuery
-from yfpy.utils import unpack_data
 from yfpy.models import League, Team, Standings, Scoreboard, Matchup, Player, PlayerStats
 from bs4 import BeautifulSoup
 import requests
@@ -22,6 +17,10 @@ import requests
 from database.FantasyManagers import FantasyManagers
 
 LEAGUE_ID = 'league_id'
+
+settings = None
+with open('data/config.json') as f:
+    settings = json.load(f)
 
 class Yahoo(commands.Cog):
     def __init__(self, bot):
@@ -45,6 +44,9 @@ class Yahoo(commands.Cog):
     async def find_user(self, userId):
         return await FantasyManagers.find_one({'_id': userId, 'league': self.config[LEAGUE_ID]})
     
+    async def find_all_users(self):
+        return await FantasyManagers.find({'league': self.config[LEAGUE_ID]}).sort('team', ASCENDING).to_list(12)
+
     async def find_discord_user(self, userId):
         user = self.bot.get_user(userId)
         if (user is None):  user = await self.bot.fetch_user(userId)
@@ -63,11 +65,21 @@ class Yahoo(commands.Cog):
         await new_entry.commit()
         return True
 
-    def parseDataDate(self, olddate): # date comes in as yyyy-MM-ddThh:mmZ
+    def parseUTCDateToTime(self, olddate: str): # date comes in as yyyy-MM-ddThh:mmZ
         tz = pytz.timezone(self.config['timezone'])
         time_string = olddate[11:16]
         utc_dt = pytz.utc.localize(datetime.datetime.strptime(time_string, '%H:%M')) - datetime.timedelta(minutes=4)
         return str(utc_dt.astimezone(tz).strftime("%I:%M%p"))
+
+    def parseUTCDateToWeekdayTime(self, olddate: str):
+        tz = pytz.timezone(self.config['timezone'])
+        utc_dt = pytz.utc.localize(datetime.datetime.strptime(olddate, f'%Y-%m-%dT%H:%MZ'))
+        return str(utc_dt.astimezone(tz).strftime(f'%a %I:%M%p'))
+
+    def parseUTCDateToDate(self, olddate: str):
+        tz = pytz.timezone(self.config['timezone'])
+        utc_dt = pytz.utc.localize(datetime.datetime.strptime(olddate, f'%Y-%m-%dT%H:%MZ'))
+        return str(utc_dt.astimezone(tz).strftime(f'%m-%d'))
 
     def getYahooQueryObject(self):
         if (self.config['old_game_id'] is not None): return YahooQuery('data/', self.config[LEAGUE_ID], game_id=self.config['old_game_id'])
@@ -171,6 +183,8 @@ class Yahoo(commands.Cog):
                         'date': schedule_dates[i].text,
                         'team1': cells[0].find('abbr').text,
                         'team2': cells[1].find('abbr').text,
+                        'team1full': cells[0].find('span').text,
+                        'team2full': cells[1].find('span').text,
                         'score': cells[2].find('a').text
                     }
                 )
@@ -179,11 +193,105 @@ class Yahoo(commands.Cog):
                         'date': schedule_dates[i].text,
                         'team1': cells[0].find('abbr').text,
                         'team2': cells[1].find('abbr').text,
+                        'team1full': cells[0].find('span').text,
+                        'team2full': cells[1].find('span').text,
                         'time': self.parseDataDate(cells[2]['data-date']).lstrip('0'),
                         'tv': cells[3].text
                     }
                 )
         return out
+
+    # returns list of NFL game status strings formatted for gameday board
+    def getLiveGameSlate(self):
+        embed = discord.Embed(color=0x99AAB5)
+        gameStates = self.getLiveGameStates(self.getIntCurrentWeek())
+        for game in gameStates:
+            if ('score' in game):
+                scores = game['score'].split(', ')
+                team1Score = scores[0].split()[1] if scores[0].split()[0] == game['team1'] else scores[1].split()[1]
+                team2Score = scores[0].split()[1] if scores[0].split()[0] == game['team2'] else scores[1].split()[1]
+                month = game['date'].split(' ')[1][:3]
+                day = game['date'].split(' ')[2]
+                date = '' + month + '/' + day
+                n = '**' + game['team1'] + ' @ ' + game['team2'] + ' | ' + date + ' ' + game['time'] + '**'
+                v = '' + game['team1full'] + ': ' + team1Score + '\n' + game['team2full'] + ': ' + team2Score
+            else:
+                month = constants.MONTH_ABBR_MAP[game['date'].split(' ')[1][:3]]
+                day = game['date'].split(' ')[2]
+                date = '' + month + '/' + day
+                n = '**' + game['team1'] + ' @ ' + game['team2'] + ' | ' + date + ' ' + game['time'] + '**'
+                v = '[Preview](https://www.youtube.com/watch?v=dQw4w9WgXcQ)'
+
+            embed.add_field(name=n, value=v)
+        return embed
+
+    # this endpoint is only capable of getting the current week
+    def getNFLScoreboardEndpoint(self, todayString = None):
+        response = requests.get("http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard")
+        data = response.json()
+        games: list = data['events']
+        embed = discord.Embed(title='Week ' + str(data['week']['number']) + ' NFL Scoreboard', color=0x99AAB5)
+        live = False
+        for game in games:
+            n = ''
+            v = ''
+
+            competitors = game['competitions'][0]['competitors']
+
+            team1 = competitors[1] #away
+            team2 = competitors[0] #home
+            team1Name = team1['team']['shortDisplayName']
+            team2Name = team2['team']['shortDisplayName']
+            team1Record = '(' + team1['records'][0]['summary'] + ')'
+            team2Record = '(' + team2['records'][0]['summary'] + ')'
+            team1Score = team1['score']
+            team2Score = team2['score']
+            
+            # if present game, else if future game, else if past game
+            if ('situation' in game['competitions'][0]): #present
+                live = True
+
+                situation = game['competitions'][0]['situation']
+                if ('possession' in situation and situation['possession'] == team1['id']): team1Name = '\>' + team1Name
+                elif ('possession' in situation and situation['possession'] == team2['id']): team2Name = '\>' + team2Name
+                dnd = situation['downDistanceText'] if ('downDistanceText' in situation) else ''
+                lastPlay = situation['lastPlay']['text']
+                clock = game['status']['type']['shortDetail']
+
+                gamecast = '[Gamecast](' + game['links'][0]['href'] + ') '
+                boxScore = '[Box Score](' + game['links'][1]['href'] + ') '
+                playByPlay = '[Play-by-Play](' + game['links'][2]['href'] + ')'
+
+                n = clock + '|' + dnd
+                v = (team1Name + ' ' + team1Record) + ':\t' + team1Score + '\n'
+                v += (team2Name + ' ' + team2Record) + ':\t' + team2Score + '\n'
+                v += lastPlay + '\n' + gamecast + boxScore + playByPlay
+
+            elif ('odds' in game['competitions'][0]): #future
+                if (self.parseUTCDateToDate(game['date']) == todayString): live = True
+                odds = game['competitions'][0]['odds']
+                line = odds[0]['details']
+                overUnder = odds[0]['overUnder']
+                gamecast = '[Gamecast](' + game['links'][0]['href'] + ')'
+                scheduleTime = self.parseUTCDateToWeekdayTime(game['date'])
+                abbrMatchup = game['shortName']
+
+                n = scheduleTime + ' | ' + abbrMatchup
+                v = team1Name + ' ' + team1Record + '\n' + team2Name + ' ' + team2Record + '\n'
+                v += line + ' | O/U: ' + str(overUnder) + ' ' + gamecast
+            else: #past
+                final = 'Final'
+                abbrMatchup = game['shortName']
+
+                boxScore = '[Box Score](' + game['links'][1]['href'] + ') '
+
+                n = final + ' | ' + abbrMatchup
+                v = (team1Name + ' ' + team1Record) + ':\t' + team1Score + '\n'
+                v += (team2Name + ' ' + team2Record) + ':\t' + team2Score + '\n'
+                v += boxScore
+
+            embed.add_field(name=n, value=v)
+        return (live, embed)
 
     async def validateWeekArg(self, ctx, week: int):
         if (week > 16):
@@ -373,8 +481,8 @@ class Yahoo(commands.Cog):
 
             if ctx.guild is not None and (
                 (str(ctx.guild.name) != 'Dedotated waam' and str(ctx.guild.name) != 'An-D\'s waambot dev') or 
-                (type == 'text' and str(ctx.channel.name) != 's-p-o-r-t-s') or
-                (type == 'public_thread' and ctx.channel.parent.name != 's-p-o-r-t-s')):
+                (type == 'text' and str(ctx.channel.name) != settings['sports_channel']) or
+                (type == 'public_thread' and ctx.channel.parent.name != settings['sports_channel'])):
                 
                 print('ff command used outside of sports channel but not in a DM, skipping..\n')
                 await ctx.send(':rotating_light: Cannot use a waambot ff command in this channel')
@@ -638,7 +746,7 @@ class Yahoo(commands.Cog):
             if (player.selected_position.position == 'BN' or player.selected_position.position == 'IR'): embedIndex = 1
             selectedPosition = 'FLX' if player.selected_position.position == 'W/R/T' else player.selected_position.position
             abbr = player.editorial_team_abbr.ljust(3, ' ')
-            number = ('#' + str(player.uniform_number) + '-').ljust(4, ' ') if (player.uniform_number is not False and player.uniform_number is not None) else '    '
+            number = ('#' + str(player.uniform_number)).ljust(4, ' ') if (player.uniform_number is not False and player.uniform_number is not None) else '    '
             primaryPosition = (player.primary_position).ljust(3, ' ')
             name = ('' + player.first_name[:1] + '.' + player.last_name) if player.last_name is not None else player.full_name
             points = ' 0.0 ' if player.player_points.total is None else ((' ' if player.player_points.total < 10.0 else '') + str(player.player_points.total))
@@ -658,9 +766,99 @@ class Yahoo(commands.Cog):
     @enforce_user_registered()
     async def gameday(self, ctx):
         """
-        Display and pin the league scoreboard with live updates (edits) every 30s until the day's games are over.
+        Display and pin the league scoreboard with live updates (edits) every 60s until the day's games are over.
         """
-        pass
+        await ctx.message.add_reaction(constants.AFFIRMATIVE_REACTION_EMOJI)
+
+        # get all registered users and their teams
+        print(getframeinfo(currentframe()).lineno)
+        userList = await self.find_all_users()
+        scoreboard: Scoreboard = self.getScoreboard(self.getIntCurrentWeek())
+        relevantMatchups = []
+        accountedTeamIds = []
+        for matchupObj in scoreboard.matchups:
+            matchup: Matchup = matchupObj['matchup']
+            for user in userList:
+                teamId = user.team
+                # skip accounted-for team
+                if (teamId in accountedTeamIds): continue
+                # account for both teams
+                if (teamId == matchup.teams[0]['team'].team_id or teamId == matchup.teams[1]['team'].team_id):
+                    relevantMatchups.append(matchupObj)
+                    accountedTeamIds.append(matchup.teams[0]['team'].team_id)
+                    accountedTeamIds.append(matchup.teams[1]['team'].team_id)
+                    break
+        
+        embedNames = [None] * len(relevantMatchups)
+        embedValues = [None] * len(relevantMatchups)
+    
+        for i in range(len(relevantMatchups)):
+            embedNames[i], embedValues[i] = self.do_matchup(relevantMatchups[i], i + 1)
+                    # Create discord thread for all these messages
+        
+        nowDateString = datetime.date.today().strftime(f"%m-%d")
+        embeds = []
+        for n, v in zip(embedNames, embedValues): 
+            embed = discord.Embed(color=0x99AAB5)
+            embed.add_field(name=n, value=v, inline=False)
+            embeds.append(embed)
+
+        nowDateString = self.parseUTCDateToDate(datetime.date.today().strftime(f'%Y-%m-%dT%H:%MZ'))
+
+        # All game info
+        live, NFLembed = self.getNFLScoreboardEndpoint(nowDateString)
+        embeds.append(NFLembed)
+
+        gamedayThread = await ctx.message.create_thread(name='Gameday ' + nowDateString)
+        msg = await gamedayThread.send(embeds=embeds)
+        await ctx.message.remove_reaction(constants.AFFIRMATIVE_REACTION_EMOJI, msg.author)
+        
+        if (live):
+            self.gamedayLoop.start(msg=msg)
+
+    # edits the gameday matchups/scoreboard every 60 seconds with up-to-the-minute information
+    @tasks.loop(seconds=60)
+    async def gamedayLoop(self, msg):
+         # get all registered users and their teams
+        print(getframeinfo(currentframe()).lineno)
+        userList = await self.find_all_users()
+        scoreboard: Scoreboard = self.getScoreboard(self.getIntCurrentWeek())
+        relevantMatchups = []
+        accountedTeamIds = []
+        for matchupObj in scoreboard.matchups:
+            matchup: Matchup = matchupObj['matchup']
+            for user in userList:
+                teamId = user.team
+                # skip accounted-for team
+                if (teamId in accountedTeamIds): continue
+                # account for both teams
+                if (teamId == matchup.teams[0]['team'].team_id or teamId == matchup.teams[1]['team'].team_id):
+                    relevantMatchups.append(matchupObj)
+                    accountedTeamIds.append(matchup.teams[0]['team'].team_id)
+                    accountedTeamIds.append(matchup.teams[1]['team'].team_id)
+                    break
+        
+        embedNames = [None] * len(relevantMatchups)
+        embedValues = [None] * len(relevantMatchups)
+    
+        for i in range(len(relevantMatchups)):
+            embedNames[i], embedValues[i] = self.do_matchup(relevantMatchups[i], i + 1)
+                    # Create discord thread for all these messages
+        
+        embeds = []
+        for n, v in zip(embedNames, embedValues): 
+            embed = discord.Embed(color=0x99AAB5)
+            embed.add_field(name=n, value=v, inline=False)
+            embeds.append(embed)
+
+        # All game info
+        live, NFLembed = self.getNFLScoreboardEndpoint(self.parseUTCDateToDate(datetime.date.today().strftime(f'%Y-%m-%dT%H:%MZ')))
+        embeds.append(NFLembed)
+        msg = await msg.edit(embeds=embeds)
+
+        if not live: 
+            await msg.channel.send('Today\'s games have ended.')
+            self.gamedayLoop.stop()
 
 def setup(bot):
     bot.add_cog(Yahoo(bot))
