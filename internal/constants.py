@@ -19,4 +19,19 @@ POSITION_MAP = {
     'K': 5,
 }
 
+MONTH_ABBR_MAP = {
+    'Jan': 1,
+    'Feb': 2,
+    'Mar': 3,
+    'Apr': 4,
+    'May': 5,
+    'Jun': 6,
+    'Jul': 7,
+    'Aug': 8,
+    'Sep': 9,
+    'Oct': 10,
+    'Nov': 11,
+    'Dec': 12
+}
+
 YAHOO_FANTASY_LEAGUE_NAME = 'You Like That!'

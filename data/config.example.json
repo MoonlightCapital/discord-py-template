@@ -3,6 +3,7 @@
   "prefix": "The prefix for the bot",
   "intents": ["The intents for the bot"],
   "description": "A cool bot",
-
-  "database": "Toggles database"
+  "database": "Toggles database",
+  "video_essay_channel": "Channel name for moderation via the moderate.py Cog",
+  "sports_channel": "Channel name for restricting the yahoo module to a sports-related channel"
 }

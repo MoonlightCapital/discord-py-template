@@ -4,6 +4,17 @@ This bot was spawned from a template written in Python to develop a Discord bot 
 
 The template is available at https://github.com/MoonlightCapital/discord-py-template
 
+## Getting Started:
+
+- See [Mongo on Dockerhub](https://hub.docker.com/_/mongo) to get a database container running
+- See [the install page](installing.md) to get the bot's code and run it in a container
+
+For the Yahoo Fantasy Football Module:
+
+- See https://github.com/uberfastman/yfpy to get connected to the Yahoo Fantasy API
+- See https://github.com/cwendt94/espn-api to get connected to the ESPN Fantasy API (for projections and NFL schedule/scores)
+
+
 ## Modules (Cogs):
 
 ***
@@ -95,6 +106,44 @@ Scrapes ESPN's schedule page for most sports leagues, displaying the most releva
 Scrapes ESPN for the given league's schedule. Accepts many aliases and slang for various leagues. Covers any televised American Pro or College sport.
 
 ***
-### yahoo
+### ff (yahoo, fantasy)
 
 Upcoming integration with the Yahoo Fantasy Sports API via https://github.com/uberfastman/yfpy with extra special ESPN Fantasy API integration to acquire projections and NFL scheduling data.
+
+#### wb ff test
+
+Registered users only. Bot outputs a line to signal that the yahoo module has loaded.
+
+#### wb ff register [team_number]
+
+Assigns the user to a team in the league. The league can be displayed with `wb ff league` to find the number for your team. The record is stored in a mongo db running in another Docker container.
+
+#### wb ff unregister
+
+Removes the user from the database of Fantasy Managers (only removes records that correspond with the currently active league id, this module is not really designed well for use with multiple leagues).
+
+#### wb ff league
+
+Prints the teams in the currently active Yahoo Fantasy Football League. This is the primary method for discerning a team id number for use with `wb ff register`
+
+#### wb ff standings
+
+Prints the latest standings for the currently active League.
+
+#### wb ff scoreboard ([week])
+
+Prints the latest week's scoreboard in a new thread. This output is threaded because it is quite a bit of information. My server takes about 20 seconds to run this command because of the quantity of API calls and the amount of string manipulation involved. Optional integer week parameter to specify a certain week's scoreboard during the current year.
+
+The user for this command must be registered with `wb ff register`, because it takes a fair amount of server resources and also clutters the channel with a thread when invoked.
+
+#### wb ff matchups ([week])
+
+Prints the matchups for the current week (just the team/manager pairings). Used to discern matchup id number for use with `wb ff matchup`. Optional week parameter to retrieve matchup numbers for past or future weeks.
+
+#### wb ff matchup ([matchup_number]) ([week])
+
+Prints the user's matchup for the current week. Optional matchup id parameter allows the user to view others' matchups. Additionally, an optional week parameter allows specifying matchups from past/future weeks, although cannot be used without the matchup_number.
+
+#### wb ff team ([team_number]) ([week])
+
+Prints the user's team for the current week. Providing a team_number parameter can show a different team in the league. Providing a week will show that team's lineup during a certain week.
