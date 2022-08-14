@@ -147,3 +147,7 @@ Prints the user's matchup for the current week. Optional matchup id parameter al
 #### wb ff team ([team_number]) ([week])
 
 Prints the user's team for the current week. Providing a team_number parameter can show a different team in the league. Providing a week will show that team's lineup during a certain week.
+
+#### wb ff gameday
+
+Creates a gameday thread with matchup information for all registered users' matchups, as well as an NFL scoreboard for the week. If the command is called on a day with active games (or games yet to start), it will update every 60 seconds until all games are 'Final'.
