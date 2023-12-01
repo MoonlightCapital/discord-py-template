@@ -34,7 +34,7 @@ python-dotenv==0.19.2
 six==1.16.0
 typing-extensions==3.10.0.0
 umongo==3.1.0
-Werkzeug==2.2.3
+Werkzeug==2.3.8
 yarl==1.7.2
 zope.event==4.5.0
 zope.interface==5.4.0
