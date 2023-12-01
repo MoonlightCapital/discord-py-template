@@ -1,4 +1,4 @@
-aiohttp==3.8.5
+aiohttp==3.9.0
 aiosignal==1.2.0
 alt-discord-flags==0.0.5
 astunparse==1.6.3
